@@ -4,6 +4,8 @@ import { STATUTS, type Chantier, type Ouvrage, type StatutOuvrage } from '../../
 import { Ligne } from '../chantiers/ChantierPage'
 import { CroquisList } from '../croquis/CroquisList'
 import { NoteOuvrage } from '../notes/NoteOuvrage'
+import { ExportPdf } from '../export/ExportPdf'
+import { exporterOuvrage } from '../export/exporter'
 import { NotesVocales } from '../notes/NotesVocales'
 import { PhotoList } from '../photos/PhotoList'
 import { OuvrageForm } from './OuvrageForm'
@@ -95,6 +97,10 @@ export function OuvragePage({ ouvrageId, onRetour, onOpenPhoto, onOpenCroquis }:
         ))}
       </div>
       {erreur && <p className="info erreur">{erreur}</p>}
+
+      <div className="export">
+        <ExportPdf libelle="📄 Fiche PDF de l'ouvrage" creer={(auteur, progres) => exporterOuvrage(ouvrage.id, auteur, progres)} />
+      </div>
 
       <h2 className="section">Photos</h2>
       <PhotoList ouvrageId={ouvrage.id} onOpen={onOpenPhoto} />

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getChantier, listOuvrages, type OuvrageResume } from '../../db/db'
 import type { Chantier } from '../../models/types'
+import { ExportPdf } from '../export/ExportPdf'
+import { exporterChantier } from '../export/exporter'
 import { OuvrageForm } from '../ouvrages/OuvrageForm'
 import { Statut } from '../ouvrages/Statut'
 import { ChantierForm } from './ChantierForm'
@@ -54,6 +56,10 @@ export function ChantierPage({ chantierId, onRetour, onOpenOuvrage }: Props) {
         {date && <Ligne titre="Date" valeur={date} />}
         {chantier.contact && <Ligne titre="Contact" valeur={chantier.contact} />}
       </dl>
+
+      <div className="export">
+        <ExportPdf libelle="📄 PDF du chantier complet" creer={(auteur, progres) => exporterChantier(chantier.id, auteur, progres)} />
+      </div>
 
       <h2 className="section">Ouvrages</h2>
       <div className="actions-principales actions-une">
