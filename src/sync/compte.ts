@@ -89,7 +89,7 @@ export function messageErreur(e: unknown): string {
   if (/password should be at least/i.test(m)) return 'Le mot de passe doit faire au moins 6 caractères.'
   if (/email not confirmed/i.test(m)) return "L'adresse e-mail n'est pas encore confirmée."
   if (/invalid.*email|unable to validate email/i.test(m)) return 'Adresse e-mail invalide.'
-  if (/failed to fetch|network|load failed/i.test(m)) return 'Pas de réseau. Réessayez quand le téléphone capte.'
+  if (/failed to fetch|network|load failed/i.test(m)) return `Serveur injoignable : pas de réseau, ou Supabase ne répond pas (détail : ${m}).`
   return m
 }
 
