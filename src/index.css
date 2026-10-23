@@ -287,3 +287,10 @@ body { overscroll-behavior: none; }
 .note-vocale-entete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .note-vocale-entete .carte-titre { flex: 1; }
 .note-vocale audio { width: 100%; }
+
+/* Export PDF. */
+.export { padding: 4px 12px 0; }
+.export-progres { margin: 0 0 6px; font-size: 1.05rem; }
+.export-fichier { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.export-auteur { margin: 0 0 4px; color: #ccc; font-size: 0.9rem; }
+.lien { background: none; border: none; padding: 8px 4px; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
