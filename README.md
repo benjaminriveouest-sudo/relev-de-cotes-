@@ -17,6 +17,16 @@ Spécifications complètes : `docs/cahier-des-charges.md`.
 La photo est réduite à 2 560 px de grand côté à l'import et n'est jamais modifiée ensuite :
 les cotes sont un calque séparé, en coordonnées de l'image.
 
+## Étape 3 : croquis et notes
+
+Sur la fiche ouvrage, sous les photos :
+
+- Croquis sur feuille quadrillée : lignes droites (bouts aimantés au quadrillage et aux autres traits), tracé à main levée,
+  et les mêmes cotes et repères que sur la photo (même éditeur, même loupe)
+- Notes : cases à cocher rapides (support, accès, contraintes) et note écrite, enregistrées automatiquement
+- Notes vocales : enregistrement au micro, écoute, suppression ; l'audio est écrit sur le téléphone chaque seconde
+  pendant l'enregistrement. La transcription en texte viendra avec la synchronisation (étape 5).
+
 ## Développement
 
 ```bash
@@ -39,6 +49,8 @@ src/
 ├── models/                 types (Photo, Cote, Repere) et identifiants
 ├── db/                     stockage local Dexie
 ├── features/photos/        prise de vue, import, liste
-├── features/annotation/    éditeur Konva, loupe, pavé numérique, annuler/rétablir
+├── features/annotation/    éditeur Konva (photos et croquis), loupe, pavé numérique, annuler/rétablir
+├── features/croquis/       feuille quadrillée, liste et éditeur de croquis
+├── features/notes/         cases à cocher, note écrite, notes vocales
 └── ui/                     utilitaires d'affichage
 ```

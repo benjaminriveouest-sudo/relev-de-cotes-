@@ -1,6 +1,18 @@
 import Dexie, { type Table } from 'dexie'
 import { newId } from '../models/id'
-import type { Annotations, Chantier, Cote, Ouvrage, Photo, Repere, StatutOuvrage } from '../models/types'
+import type {
+  Annotations,
+  Chantier,
+  Cote,
+  Croquis,
+  Note,
+  NoteVocale,
+  Ouvrage,
+  Photo,
+  Repere,
+  StatutOuvrage,
+  Trait,
+} from '../models/types'
 
 export const NOM_BASE = 'releve-de-cotes'
 
@@ -10,6 +22,10 @@ class RelevesDB extends Dexie {
   photos!: Table<Photo, string>
   cotes!: Table<Cote, string>
   reperes!: Table<Repere, string>
+  croquis!: Table<Croquis, string>
+  traits!: Table<Trait, string>
+  notes!: Table<Note, string>
+  notesVocales!: Table<NoteVocale, string>
 
   constructor() {
     super(NOM_BASE)
@@ -53,6 +69,13 @@ class RelevesDB extends Dexie {
         await tx.table('ouvrages').add(ouvrage)
         await photos.toCollection().modify({ ouvrageId: ouvrage.id })
       })
+    // Étape 3 : nouvelles tables seulement, les données existantes ne bougent pas.
+    this.version(3).stores({
+      croquis: 'id, ouvrageId',
+      traits: 'id, croquisId',
+      notes: 'id, ouvrageId',
+      notesVocales: 'id, ouvrageId',
+    })
   }
 }
 
@@ -94,9 +117,12 @@ export async function saveChantier(chantier: Chantier): Promise<void> {
   await db.chantiers.put({ ...chantier, updatedAt: Date.now() })
 }
 
+/** Tables du contenu d'un ouvrage, à verrouiller pour le supprimer. */
+const tablesOuvrage = () => [db.ouvrages, db.photos, db.cotes, db.reperes, db.croquis, db.traits, db.notes, db.notesVocales]
+
 /** Supprime le chantier avec tous ses ouvrages, photos et cotes. */
 export async function deleteChantier(id: string): Promise<void> {
-  await db.transaction('rw', [db.chantiers, db.ouvrages, db.photos, db.cotes, db.reperes], async () => {
+  await db.transaction('rw', [db.chantiers, ...tablesOuvrage()], async () => {
     const ouvrages = await db.ouvrages.where('chantierId').equals(id).primaryKeys()
     for (const o of ouvrages) await supprimerOuvrage(o)
     await db.chantiers.delete(id)
@@ -134,14 +160,20 @@ export async function saveOuvrage(ouvrage: Ouvrage): Promise<void> {
 }
 
 export async function deleteOuvrage(id: string): Promise<void> {
-  await db.transaction('rw', [db.ouvrages, db.photos, db.cotes, db.reperes], () => supprimerOuvrage(id))
+  await db.transaction('rw', tablesOuvrage(), () => supprimerOuvrage(id))
 }
 
 async function supprimerOuvrage(id: string): Promise<void> {
   const photos = await db.photos.where('ouvrageId').equals(id).primaryKeys()
-  await db.cotes.where('photoId').anyOf(photos).delete()
-  await db.reperes.where('photoId').anyOf(photos).delete()
+  const croquis = await db.croquis.where('ouvrageId').equals(id).primaryKeys()
+  const supports = [...photos, ...croquis]
+  await db.cotes.where('photoId').anyOf(supports).delete()
+  await db.reperes.where('photoId').anyOf(supports).delete()
+  await db.traits.where('croquisId').anyOf(croquis).delete()
   await db.photos.bulkDelete(photos)
+  await db.croquis.bulkDelete(croquis)
+  await db.notes.where('ouvrageId').equals(id).delete()
+  await db.notesVocales.where('ouvrageId').equals(id).delete()
   await db.ouvrages.delete(id)
 }
 
@@ -178,23 +210,90 @@ export async function deletePhoto(id: string): Promise<void> {
   })
 }
 
-export async function loadAnnotations(photoId: string): Promise<Annotations> {
-  const [cotes, reperes] = await Promise.all([
-    db.cotes.where('photoId').equals(photoId).toArray(),
-    db.reperes.where('photoId').equals(photoId).toArray(),
+/** Calque d'une photo ou d'un croquis (même identifiant de support pour les deux). */
+export async function loadAnnotations(supportId: string): Promise<Annotations> {
+  const [cotes, reperes, traits] = await Promise.all([
+    db.cotes.where('photoId').equals(supportId).toArray(),
+    db.reperes.where('photoId').equals(supportId).toArray(),
+    db.traits.where('croquisId').equals(supportId).toArray(),
   ])
-  return { cotes, reperes }
+  return { cotes, reperes, traits }
 }
 
-/** Remplace tout le calque d'une photo en une seule transaction : pas d'état à moitié écrit. */
-export async function saveAnnotations(photoId: string, ann: Annotations): Promise<void> {
-  await db.transaction('rw', db.photos, db.cotes, db.reperes, async () => {
-    await db.cotes.where('photoId').equals(photoId).delete()
-    await db.reperes.where('photoId').equals(photoId).delete()
+/** Remplace tout le calque d'une photo ou d'un croquis en une seule transaction : pas d'état à moitié écrit. */
+export async function saveAnnotations(supportId: string, ann: Annotations): Promise<void> {
+  await db.transaction('rw', [db.photos, db.croquis, db.cotes, db.reperes, db.traits], async () => {
+    await db.cotes.where('photoId').equals(supportId).delete()
+    await db.reperes.where('photoId').equals(supportId).delete()
+    await db.traits.where('croquisId').equals(supportId).delete()
     await db.cotes.bulkPut(ann.cotes)
     await db.reperes.bulkPut(ann.reperes)
-    await db.photos.update(photoId, { updatedAt: Date.now() })
+    await db.traits.bulkPut(ann.traits)
+    const now = Date.now()
+    await db.photos.update(supportId, { updatedAt: now })
+    await db.croquis.update(supportId, { updatedAt: now })
   })
+}
+
+// --- Croquis ---
+
+/** Feuille portrait de 40 × 56 carreaux. */
+export function nouveauCroquis(ouvrageId: string): Croquis {
+  const now = Date.now()
+  return { id: newId(), ouvrageId, largeur: 2000, hauteur: 2800, pas: 50, createdAt: now, updatedAt: now }
+}
+
+export interface CroquisResume {
+  croquis: Croquis
+  annotations: Annotations
+}
+
+/** Croquis de l'ouvrage, le plus récent d'abord, avec leur calque pour l'aperçu. */
+export async function listCroquis(ouvrageId: string): Promise<CroquisResume[]> {
+  const croquis = (await db.croquis.where('ouvrageId').equals(ouvrageId).sortBy('createdAt')).reverse()
+  return Promise.all(croquis.map(async (c) => ({ croquis: c, annotations: await loadAnnotations(c.id) })))
+}
+
+export function getCroquis(id: string): Promise<Croquis | undefined> {
+  return db.croquis.get(id)
+}
+
+export async function addCroquis(croquis: Croquis): Promise<void> {
+  await db.croquis.add(croquis)
+}
+
+export async function deleteCroquis(id: string): Promise<void> {
+  await db.transaction('rw', [db.croquis, db.cotes, db.reperes, db.traits], async () => {
+    await db.cotes.where('photoId').equals(id).delete()
+    await db.reperes.where('photoId').equals(id).delete()
+    await db.traits.where('croquisId').equals(id).delete()
+    await db.croquis.delete(id)
+  })
+}
+
+// --- Notes ---
+
+/** Note de l'ouvrage, ou une note vide (pas encore enregistrée) s'il n'en a pas. */
+export async function getNote(ouvrageId: string): Promise<Note> {
+  const note = await db.notes.where('ouvrageId').equals(ouvrageId).first()
+  return note ?? { id: newId(), ouvrageId, texte: '', cases: [], updatedAt: 0 }
+}
+
+export async function saveNote(note: Note): Promise<void> {
+  await db.notes.put({ ...note, updatedAt: Date.now() })
+}
+
+export async function listNotesVocales(ouvrageId: string): Promise<NoteVocale[]> {
+  return (await db.notesVocales.where('ouvrageId').equals(ouvrageId).sortBy('createdAt')).reverse()
+}
+
+/** Enregistre ou remplace une note vocale (appelé aussi pendant l'enregistrement, par morceaux). */
+export async function saveNoteVocale(note: NoteVocale): Promise<void> {
+  await db.notesVocales.put({ ...note, updatedAt: Date.now() })
+}
+
+export async function deleteNoteVocale(id: string): Promise<void> {
+  await db.notesVocales.delete(id)
 }
 
 /** Demande au navigateur de ne pas effacer les données en cas de manque de place. */

@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { getChantier, getOuvrage, saveOuvrage } from '../../db/db'
 import { STATUTS, type Chantier, type Ouvrage, type StatutOuvrage } from '../../models/types'
 import { Ligne } from '../chantiers/ChantierPage'
+import { CroquisList } from '../croquis/CroquisList'
+import { NoteOuvrage } from '../notes/NoteOuvrage'
+import { NotesVocales } from '../notes/NotesVocales'
 import { PhotoList } from '../photos/PhotoList'
 import { OuvrageForm } from './OuvrageForm'
 
@@ -10,9 +13,10 @@ interface Props {
   /** Revient au chantier de l'ouvrage (ou à la liste s'il n'existe plus). */
   onRetour: (chantierId?: string) => void
   onOpenPhoto: (photoId: string) => void
+  onOpenCroquis: (croquisId: string) => void
 }
 
-export function OuvragePage({ ouvrageId, onRetour, onOpenPhoto }: Props) {
+export function OuvragePage({ ouvrageId, onRetour, onOpenPhoto, onOpenCroquis }: Props) {
   const [ouvrage, setOuvrage] = useState<Ouvrage | null>()
   const [chantier, setChantier] = useState<Chantier>()
   const [modification, setModification] = useState(false)
@@ -94,6 +98,15 @@ export function OuvragePage({ ouvrageId, onRetour, onOpenPhoto }: Props) {
 
       <h2 className="section">Photos</h2>
       <PhotoList ouvrageId={ouvrage.id} onOpen={onOpenPhoto} />
+
+      <h2 className="section">Croquis</h2>
+      <CroquisList ouvrageId={ouvrage.id} onOpen={onOpenCroquis} />
+
+      <h2 className="section">Notes</h2>
+      <NoteOuvrage ouvrageId={ouvrage.id} />
+
+      <h2 className="section">Notes vocales</h2>
+      <NotesVocales ouvrageId={ouvrage.id} />
 
       {modification && (
         <OuvrageForm

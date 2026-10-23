@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { angleLisible, clampToImage, distanceToSegment, fitView, pinchView, toImage, toScreen, zoomAt } from './geometry'
+import {
+  aimanter,
+  angleLisible,
+  clampToImage,
+  distanceToPolyline,
+  distanceToSegment,
+  fitView,
+  pinchView,
+  toImage,
+  toScreen,
+  zoomAt,
+} from './geometry'
 
 describe('geometry', () => {
   it('passe de l’image à l’écran et retour', () => {
@@ -54,5 +65,19 @@ describe('geometry', () => {
 
   it('garde les points dans la photo', () => {
     expect(clampToImage({ x: -5, y: 3000 }, 100, 200)).toEqual({ x: 0, y: 200 })
+  })
+})
+
+describe('croquis', () => {
+  it('mesure la distance à un tracé à plusieurs segments', () => {
+    expect(distanceToPolyline({ x: 5, y: 3 }, [0, 0, 10, 0, 10, 10])).toBe(3)
+    expect(distanceToPolyline({ x: 13, y: 5 }, [0, 0, 10, 0, 10, 10])).toBe(3)
+    expect(distanceToPolyline({ x: 0, y: 0 }, [])).toBe(Infinity)
+  })
+
+  it('aimante d’abord sur un bout de trait, puis sur le quadrillage', () => {
+    expect(aimanter({ x: 52, y: 49 }, [{ x: 58, y: 47 }], 50, 10)).toEqual({ x: 58, y: 47 })
+    expect(aimanter({ x: 52, y: 49 }, [], 50, 10)).toEqual({ x: 50, y: 50 })
+    expect(aimanter({ x: 75, y: 75 }, [], 50, 10)).toEqual({ x: 75, y: 75 })
   })
 })
