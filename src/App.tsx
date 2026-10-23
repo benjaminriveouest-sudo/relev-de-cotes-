@@ -3,11 +3,15 @@ import { demanderStockagePersistant } from './db/db'
 import { Editor } from './features/annotation/Editor'
 import { ChantierList } from './features/chantiers/ChantierList'
 import { ChantierPage } from './features/chantiers/ChantierPage'
+import { CompteEcran } from './features/compte/CompteEcran'
 import { CroquisEditor } from './features/croquis/CroquisEditor'
 import { OuvragePage } from './features/ouvrages/OuvragePage'
+import { demarrerCompte } from './sync/compte'
+import { demarrerSynchro } from './sync/synchro'
 
 type Route =
   | { ecran: 'chantiers' }
+  | { ecran: 'compte' }
   | { ecran: 'chantier'; id: string }
   | { ecran: 'ouvrage'; id: string }
   | { ecran: 'photo'; ouvrageId: string; id: string }
@@ -16,6 +20,7 @@ type Route =
 /** Route dans l'adresse (#/ouvrage/<id>…) : si le téléphone recharge l'appli, on revient au même endroit. */
 function lireRoute(): Route {
   const parties = window.location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent)
+  if (parties[0] === 'compte') return { ecran: 'compte' }
   if (parties[0] === 'chantier' && parties[1]) return { ecran: 'chantier', id: parties[1] }
   if (parties[0] === 'ouvrage' && parties[1] && parties[2] === 'photo' && parties[3])
     return { ecran: 'photo', ouvrageId: parties[1], id: parties[3] }
@@ -31,9 +36,13 @@ function aller(...parties: string[]) {
 
 export default function App() {
   const [route, setRoute] = useState(lireRoute)
+  // Change pour recharger l'écran de l'ouvrage quand des modifications arrivent du serveur.
+  const [actualisation, setActualisation] = useState(0)
 
   useEffect(() => {
     demanderStockagePersistant()
+    demarrerCompte()
+    demarrerSynchro()
     const onHash = () => setRoute(lireRoute())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
@@ -47,8 +56,9 @@ export default function App() {
     case 'ouvrage':
       return (
         <OuvragePage
-          key={route.id}
+          key={`${route.id}-${actualisation}`}
           ouvrageId={route.id}
+          onActualiser={() => setActualisation((n) => n + 1)}
           onRetour={(chantierId) => (chantierId ? aller('chantier', chantierId) : aller())}
           onOpenPhoto={(photoId) => aller('ouvrage', route.id, 'photo', photoId)}
           onOpenCroquis={(croquisId) => aller('ouvrage', route.id, 'croquis', croquisId)}
@@ -63,7 +73,9 @@ export default function App() {
           onOpenOuvrage={(id) => aller('ouvrage', id)}
         />
       )
+    case 'compte':
+      return <CompteEcran onRetour={() => aller()} />
     default:
-      return <ChantierList onOpen={(id) => aller('chantier', id)} />
+      return <ChantierList onOpen={(id) => aller('chantier', id)} onCompte={() => aller('compte')} />
   }
 }

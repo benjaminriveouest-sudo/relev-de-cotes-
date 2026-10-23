@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import { newId } from '../models/id'
+import { suiviModifications, TABLE_ENVOIS, type Envoi } from '../sync/suivi'
 import type {
   Annotations,
   Chantier,
@@ -26,6 +27,8 @@ class RelevesDB extends Dexie {
   traits!: Table<Trait, string>
   notes!: Table<Note, string>
   notesVocales!: Table<NoteVocale, string>
+  envois!: Table<Envoi, string>
+  meta!: Table<{ cle: string; valeur: unknown }, string>
 
   constructor() {
     super(NOM_BASE)
@@ -76,6 +79,12 @@ class RelevesDB extends Dexie {
       notes: 'id, ouvrageId',
       notesVocales: 'id, ouvrageId',
     })
+    // Étape 5 : file d'envoi et état de la synchronisation, nouvelles tables seulement.
+    this.version(4).stores({
+      [TABLE_ENVOIS]: 'cle',
+      meta: 'cle',
+    })
+    this.use(suiviModifications())
   }
 }
 
