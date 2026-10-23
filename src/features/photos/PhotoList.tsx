@@ -4,10 +4,11 @@ import { useObjectUrl } from '../../ui/useObjectUrl'
 import { preparePhoto } from './preparePhoto'
 
 interface Props {
+  ouvrageId: string
   onOpen: (photoId: string) => void
 }
 
-export function PhotoList({ onOpen }: Props) {
+export function PhotoList({ ouvrageId, onOpen }: Props) {
   const [photos, setPhotos] = useState<PhotoResume[]>()
   const [occupe, setOccupe] = useState(false)
   const [erreur, setErreur] = useState<string>()
@@ -15,18 +16,20 @@ export function PhotoList({ onOpen }: Props) {
   const galerieRef = useRef<HTMLInputElement>(null)
 
   const recharger = useCallback(() => {
-    listPhotos().then(setPhotos)
-  }, [])
+    listPhotos(ouvrageId).then(setPhotos)
+  }, [ouvrageId])
   useEffect(recharger, [recharger])
 
   async function importer(files: FileList | null) {
     if (!files || files.length === 0) return
+    // Compté avant de vider le champ : sur Chrome, la liste de fichiers se vide avec lui.
+    const nbFichiers = files.length
     setOccupe(true)
     setErreur(undefined)
     let derniere: string | undefined
     try {
       for (const file of Array.from(files)) {
-        const photo = await preparePhoto(file)
+        const photo = await preparePhoto(file, ouvrageId)
         await addPhoto(photo)
         derniere = photo.id
       }
@@ -38,16 +41,12 @@ export function PhotoList({ onOpen }: Props) {
       if (galerieRef.current) galerieRef.current.value = ''
     }
     // Une seule photo prise : on passe directement à l'annotation.
-    if (derniere && files.length === 1) onOpen(derniere)
+    if (derniere && nbFichiers === 1) onOpen(derniere)
     else recharger()
   }
 
   return (
-    <div className="ecran">
-      <header className="barre">
-        <h1>Relevé de cotes</h1>
-      </header>
-
+    <>
       <div className="actions-principales">
         <button className="btn btn-primaire" disabled={occupe} onClick={() => cameraRef.current?.click()}>
           📷 Prendre une photo
@@ -70,7 +69,7 @@ export function PhotoList({ onOpen }: Props) {
       {erreur && <p className="info erreur">{erreur}</p>}
 
       {photos && photos.length === 0 && (
-        <p className="info">Aucune photo pour l'instant. Prenez une photo pour commencer le relevé.</p>
+        <p className="info">Aucune photo pour l'instant. Prenez une photo pour relever cet ouvrage.</p>
       )}
 
       <ul className="grille">
@@ -80,7 +79,7 @@ export function PhotoList({ onOpen }: Props) {
           </li>
         ))}
       </ul>
-    </div>
+    </>
   )
 }
 

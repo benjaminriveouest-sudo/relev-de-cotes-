@@ -23,7 +23,7 @@ async function redimensionner(source: ImageBitmap, coteMax: number, qualite: num
 }
 
 /** Transforme le fichier de l'appareil photo ou de la galerie en photo prête à stocker. */
-export async function preparePhoto(file: File): Promise<Photo> {
+export async function preparePhoto(file: File, ouvrageId: string): Promise<Photo> {
   // 'from-image' applique l'orientation EXIF : la photo s'affiche dans le bon sens.
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
   try {
@@ -32,6 +32,7 @@ export async function preparePhoto(file: File): Promise<Photo> {
     const now = Date.now()
     return {
       id: newId(),
+      ouvrageId,
       blob: image.blob,
       thumb: miniature.blob,
       width: image.width,

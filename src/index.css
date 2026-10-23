@@ -7,6 +7,7 @@
   --accent: #ffd400;
   --selection: #00e5ff;
   --danger: #ff5a36;
+  --valide: #3ddc84;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 18px;
   color: var(--texte);
@@ -34,7 +35,9 @@ body { overscroll-behavior: none; }
   border-bottom: 1px solid var(--bord);
 }
 .barre h1 { font-size: 1.3rem; margin: 6px 0; }
-.barre-titre { flex: 1; font-weight: 700; }
+.barre-titre { flex: 1; min-width: 0; font-weight: 700; }
+.barre-titre h1, h1.barre-titre { overflow-wrap: anywhere; line-height: 1.2; }
+.barre-sous-titre { font-size: 0.85rem; font-weight: 400; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alerte { color: var(--danger); }
 
 .btn {
@@ -59,6 +62,8 @@ body { overscroll-behavior: none; }
 
 .actions-principales { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; padding: 16px 12px; }
 .actions-principales .btn { min-height: 72px; font-size: 1.1rem; }
+
+.actions-une { grid-template-columns: 1fr; }
 
 .info { padding: 0 16px; color: #ccc; }
 .erreur { color: var(--danger); }
@@ -202,3 +207,59 @@ body { overscroll-behavior: none; }
   color: var(--texte);
   font: inherit;
 }
+
+/* Chantiers et ouvrages. */
+.filtres { padding: 0 12px; }
+.filtres .puces { margin: 10px 0 4px; }
+.section { margin: 20px 12px 0; font-size: 1.1rem; }
+
+.liste { list-style: none; margin: 0; padding: 8px 12px 24px; display: grid; gap: 10px; }
+.carte {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 2px solid var(--bord);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--texte);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.carte:active { background: #2c2c2c; }
+.carte-titre { font-weight: 800; font-size: 1.05rem; }
+.carte-detail { color: #ccc; font-size: 0.9rem; }
+.carte-statuts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 2px; }
+
+.statut {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  border: 2px solid currentColor;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+.statut-a_relever { color: #ddd; }
+.statut-releve { color: var(--accent); }
+.statut-valide { color: var(--valide); }
+
+.statuts-choix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px; }
+.statuts-choix .statut-btn { padding: 0 4px; border-color: currentColor; }
+.statut-btn.actif.statut-a_relever { background: #ddd; border-color: #ddd; color: #000; }
+.statut-btn.actif.statut-releve { background: var(--accent); border-color: var(--accent); color: #000; }
+.statut-btn.actif.statut-valide { background: var(--valide); border-color: var(--valide); color: #000; }
+
+.fiche { margin: 8px 12px 0; padding: 0; }
+.fiche-ligne { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid #333; }
+.fiche-ligne dt { flex: 0 0 110px; color: #ccc; }
+.fiche-ligne dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+
+.formulaire { max-height: 92vh; max-height: 92dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.formulaire h2 { margin-bottom: 2px; }
+.formulaire label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; font-weight: 700; color: #ccc; }
+.formulaire .puces { margin: 0; }
+.formulaire .modale-actions { margin-top: 6px; }
+.btn-large { width: 100%; }

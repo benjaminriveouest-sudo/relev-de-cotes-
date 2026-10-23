@@ -1,30 +1,159 @@
 import Dexie, { type Table } from 'dexie'
-import type { Annotations, Cote, Photo, Repere } from '../models/types'
+import { newId } from '../models/id'
+import type { Annotations, Chantier, Cote, Ouvrage, Photo, Repere, StatutOuvrage } from '../models/types'
+
+export const NOM_BASE = 'releve-de-cotes'
 
 class RelevesDB extends Dexie {
+  chantiers!: Table<Chantier, string>
+  ouvrages!: Table<Ouvrage, string>
   photos!: Table<Photo, string>
   cotes!: Table<Cote, string>
   reperes!: Table<Repere, string>
 
   constructor() {
-    super('releve-de-cotes')
+    super(NOM_BASE)
     this.version(1).stores({
       photos: 'id, createdAt',
       cotes: 'id, photoId',
       reperes: 'id, photoId',
     })
+    this.version(2)
+      .stores({
+        chantiers: 'id, updatedAt',
+        ouvrages: 'id, chantierId',
+        photos: 'id, createdAt, ouvrageId',
+      })
+      .upgrade(async (tx) => {
+        // Les photos de l'étape 1 n'avaient pas d'ouvrage : on les range pour ne rien perdre.
+        const photos = tx.table<Photo, string>('photos')
+        if ((await photos.count()) === 0) return
+        const now = Date.now()
+        const chantier: Chantier = {
+          id: newId(),
+          nom: "Photos de l'étape 1",
+          client: '',
+          adresse: '',
+          contact: '',
+          date: dateDuJour(),
+          createdAt: now,
+          updatedAt: now,
+        }
+        const ouvrage: Ouvrage = {
+          id: newId(),
+          chantierId: chantier.id,
+          type: 'Autre',
+          repere: 'Photos à classer',
+          localisation: '',
+          statut: 'a_relever',
+          createdAt: now,
+          updatedAt: now,
+        }
+        await tx.table('chantiers').add(chantier)
+        await tx.table('ouvrages').add(ouvrage)
+        await photos.toCollection().modify({ ouvrageId: ouvrage.id })
+      })
   }
 }
 
 export const db = new RelevesDB()
+
+/** Date du jour au format AAAA-MM-JJ, à l'heure locale. */
+export function dateDuJour(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// --- Chantiers ---
+
+export type CompteStatuts = Record<StatutOuvrage, number>
+
+export interface ChantierResume {
+  chantier: Chantier
+  statuts: CompteStatuts
+}
+
+export async function listChantiers(): Promise<ChantierResume[]> {
+  const [chantiers, ouvrages] = await Promise.all([db.chantiers.toArray(), db.ouvrages.toArray()])
+  const comptes = new Map<string, CompteStatuts>()
+  for (const o of ouvrages) {
+    const c = comptes.get(o.chantierId) ?? { a_relever: 0, releve: 0, valide: 0 }
+    c[o.statut]++
+    comptes.set(o.chantierId, c)
+  }
+  return chantiers
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .map((chantier) => ({ chantier, statuts: comptes.get(chantier.id) ?? { a_relever: 0, releve: 0, valide: 0 } }))
+}
+
+export function getChantier(id: string): Promise<Chantier | undefined> {
+  return db.chantiers.get(id)
+}
+
+export async function saveChantier(chantier: Chantier): Promise<void> {
+  await db.chantiers.put({ ...chantier, updatedAt: Date.now() })
+}
+
+/** Supprime le chantier avec tous ses ouvrages, photos et cotes. */
+export async function deleteChantier(id: string): Promise<void> {
+  await db.transaction('rw', [db.chantiers, db.ouvrages, db.photos, db.cotes, db.reperes], async () => {
+    const ouvrages = await db.ouvrages.where('chantierId').equals(id).primaryKeys()
+    for (const o of ouvrages) await supprimerOuvrage(o)
+    await db.chantiers.delete(id)
+  })
+}
+
+// --- Ouvrages ---
+
+export interface OuvrageResume {
+  ouvrage: Ouvrage
+  nbPhotos: number
+}
+
+export async function listOuvrages(chantierId: string): Promise<OuvrageResume[]> {
+  const ouvrages = await db.ouvrages.where('chantierId').equals(chantierId).sortBy('createdAt')
+  return Promise.all(
+    ouvrages.map(async (ouvrage) => ({
+      ouvrage,
+      nbPhotos: await db.photos.where('ouvrageId').equals(ouvrage.id).count(),
+    })),
+  )
+}
+
+export function getOuvrage(id: string): Promise<Ouvrage | undefined> {
+  return db.ouvrages.get(id)
+}
+
+/** Enregistre l'ouvrage et remonte le chantier en tête de liste. */
+export async function saveOuvrage(ouvrage: Ouvrage): Promise<void> {
+  const now = Date.now()
+  await db.transaction('rw', db.ouvrages, db.chantiers, async () => {
+    await db.ouvrages.put({ ...ouvrage, updatedAt: now })
+    await db.chantiers.update(ouvrage.chantierId, { updatedAt: now })
+  })
+}
+
+export async function deleteOuvrage(id: string): Promise<void> {
+  await db.transaction('rw', [db.ouvrages, db.photos, db.cotes, db.reperes], () => supprimerOuvrage(id))
+}
+
+async function supprimerOuvrage(id: string): Promise<void> {
+  const photos = await db.photos.where('ouvrageId').equals(id).primaryKeys()
+  await db.cotes.where('photoId').anyOf(photos).delete()
+  await db.reperes.where('photoId').anyOf(photos).delete()
+  await db.photos.bulkDelete(photos)
+  await db.ouvrages.delete(id)
+}
+
+// --- Photos ---
 
 export interface PhotoResume {
   photo: Photo
   nbCotes: number
 }
 
-export async function listPhotos(): Promise<PhotoResume[]> {
-  const photos = await db.photos.orderBy('createdAt').reverse().toArray()
+export async function listPhotos(ouvrageId: string): Promise<PhotoResume[]> {
+  const photos = (await db.photos.where('ouvrageId').equals(ouvrageId).sortBy('createdAt')).reverse()
   return Promise.all(
     photos.map(async (photo) => ({
       photo,

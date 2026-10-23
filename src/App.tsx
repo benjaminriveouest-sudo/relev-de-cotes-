@@ -1,24 +1,62 @@
 import { useEffect, useState } from 'react'
 import { demanderStockagePersistant } from './db/db'
 import { Editor } from './features/annotation/Editor'
-import { PhotoList } from './features/photos/PhotoList'
+import { ChantierList } from './features/chantiers/ChantierList'
+import { ChantierPage } from './features/chantiers/ChantierPage'
+import { OuvragePage } from './features/ouvrages/OuvragePage'
 
-/** Route dans l'adresse (#/photo/<id>) : si le téléphone recharge l'appli, on revient sur la même photo. */
-function lireRoute(): string | null {
-  const m = window.location.hash.match(/^#\/photo\/(.+)$/)
-  return m ? decodeURIComponent(m[1]) : null
+type Route =
+  | { ecran: 'chantiers' }
+  | { ecran: 'chantier'; id: string }
+  | { ecran: 'ouvrage'; id: string }
+  | { ecran: 'photo'; ouvrageId: string; id: string }
+
+/** Route dans l'adresse (#/ouvrage/<id>…) : si le téléphone recharge l'appli, on revient au même endroit. */
+function lireRoute(): Route {
+  const parties = window.location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent)
+  if (parties[0] === 'chantier' && parties[1]) return { ecran: 'chantier', id: parties[1] }
+  if (parties[0] === 'ouvrage' && parties[1] && parties[2] === 'photo' && parties[3])
+    return { ecran: 'photo', ouvrageId: parties[1], id: parties[3] }
+  if (parties[0] === 'ouvrage' && parties[1]) return { ecran: 'ouvrage', id: parties[1] }
+  return { ecran: 'chantiers' }
+}
+
+function aller(...parties: string[]) {
+  window.location.hash = parties.length ? '#/' + parties.map(encodeURIComponent).join('/') : ''
 }
 
 export default function App() {
-  const [photoId, setPhotoId] = useState(lireRoute)
+  const [route, setRoute] = useState(lireRoute)
 
   useEffect(() => {
     demanderStockagePersistant()
-    const onHash = () => setPhotoId(lireRoute())
+    const onHash = () => setRoute(lireRoute())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  if (photoId) return <Editor key={photoId} photoId={photoId} onRetour={() => (window.location.hash = '')} />
-  return <PhotoList onOpen={(id) => (window.location.hash = `#/photo/${encodeURIComponent(id)}`)} />
+  switch (route.ecran) {
+    case 'photo':
+      return <Editor key={route.id} photoId={route.id} onRetour={() => aller('ouvrage', route.ouvrageId)} />
+    case 'ouvrage':
+      return (
+        <OuvragePage
+          key={route.id}
+          ouvrageId={route.id}
+          onRetour={(chantierId) => (chantierId ? aller('chantier', chantierId) : aller())}
+          onOpenPhoto={(photoId) => aller('ouvrage', route.id, 'photo', photoId)}
+        />
+      )
+    case 'chantier':
+      return (
+        <ChantierPage
+          key={route.id}
+          chantierId={route.id}
+          onRetour={() => aller()}
+          onOpenOuvrage={(id) => aller('ouvrage', id)}
+        />
+      )
+    default:
+      return <ChantierList onOpen={(id) => aller('chantier', id)} />
+  }
 }
