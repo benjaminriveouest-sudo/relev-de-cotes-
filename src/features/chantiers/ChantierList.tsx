@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { listChantiers, type ChantierResume } from '../../db/db'
 import { STATUTS, type StatutOuvrage } from '../../models/types'
+import { useCompte } from '../../sync/compte'
+import { useSynchro } from '../../sync/synchro'
+import { BarreSynchro } from '../compte/BarreSynchro'
 import { Statut } from '../ouvrages/Statut'
 import { ChantierForm } from './ChantierForm'
 import { filtrerChantiers } from './filtre'
 
 interface Props {
   onOpen: (chantierId: string) => void
+  onCompte: () => void
 }
 
-export function ChantierList({ onOpen }: Props) {
+export function ChantierList({ onOpen, onCompte }: Props) {
+  const compte = useCompte()
+  const { versionRecue } = useSynchro()
   const [chantiers, setChantiers] = useState<ChantierResume[]>()
   const [recherche, setRecherche] = useState('')
   const [statut, setStatut] = useState<StatutOuvrage | null>(null)
@@ -17,7 +23,7 @@ export function ChantierList({ onOpen }: Props) {
 
   useEffect(() => {
     listChantiers().then(setChantiers)
-  }, [])
+  }, [versionRecue])
 
   const visibles = useMemo(
     () => (chantiers ? filtrerChantiers(chantiers, recherche, statut) : undefined),
@@ -27,8 +33,14 @@ export function ChantierList({ onOpen }: Props) {
   return (
     <div className="ecran">
       <header className="barre">
-        <h1>Chantiers</h1>
+        <h1 className="barre-titre">Chantiers</h1>
+        {compte.statut !== 'non_configure' && (
+          <button className="btn" onClick={onCompte}>
+            {compte.statut === 'connecte' ? `👤 ${compte.membre.nom}` : '👤 Compte'}
+          </button>
+        )}
       </header>
+      <BarreSynchro />
 
       <div className="actions-principales actions-une">
         <button className="btn btn-primaire" onClick={() => setCreation(true)}>

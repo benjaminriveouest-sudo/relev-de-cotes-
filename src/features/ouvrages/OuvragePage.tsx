@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getChantier, getOuvrage, saveOuvrage } from '../../db/db'
 import { STATUTS, type Chantier, type Ouvrage, type StatutOuvrage } from '../../models/types'
+import { peutValider, useCompte } from '../../sync/compte'
+import { BarreSynchro } from '../compte/BarreSynchro'
 import { Ligne } from '../chantiers/ChantierPage'
 import { CroquisList } from '../croquis/CroquisList'
 import { NoteOuvrage } from '../notes/NoteOuvrage'
@@ -16,9 +18,12 @@ interface Props {
   onRetour: (chantierId?: string) => void
   onOpenPhoto: (photoId: string) => void
   onOpenCroquis: (croquisId: string) => void
+  /** Recharge l'écran (modifications arrivées du serveur). */
+  onActualiser?: () => void
 }
 
-export function OuvragePage({ ouvrageId, onRetour, onOpenPhoto, onOpenCroquis }: Props) {
+export function OuvragePage({ ouvrageId, onRetour, onOpenPhoto, onOpenCroquis, onActualiser }: Props) {
+  const bureau = peutValider(useCompte())
   const [ouvrage, setOuvrage] = useState<Ouvrage | null>()
   const [chantier, setChantier] = useState<Chantier>()
   const [modification, setModification] = useState(false)
@@ -77,6 +82,7 @@ export function OuvragePage({ ouvrageId, onRetour, onOpenPhoto, onOpenCroquis }:
           Modifier
         </button>
       </header>
+      <BarreSynchro onActualiser={onActualiser} />
 
       {ouvrage.localisation && (
         <dl className="fiche">
@@ -90,12 +96,15 @@ export function OuvragePage({ ouvrageId, onRetour, onOpenPhoto, onOpenCroquis }:
             key={s.valeur}
             className={`btn statut-btn statut-${s.valeur} ${ouvrage.statut === s.valeur ? 'actif' : ''}`}
             aria-pressed={ouvrage.statut === s.valeur}
+            // Seul le bureau met « Validé » ou retire une validation.
+            disabled={!bureau && (s.valeur === 'valide' || ouvrage.statut === 'valide')}
             onClick={() => changerStatut(s.valeur)}
           >
             {s.libelle}
           </button>
         ))}
       </div>
+      {!bureau && <p className="statut-verrou">Seul le bureau peut valider un ouvrage.</p>}
       {erreur && <p className="info erreur">{erreur}</p>}
 
       <div className="export">

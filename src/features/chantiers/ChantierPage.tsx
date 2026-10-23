@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getChantier, listOuvrages, type OuvrageResume } from '../../db/db'
 import type { Chantier } from '../../models/types'
+import { useSynchro } from '../../sync/synchro'
+import { BarreSynchro } from '../compte/BarreSynchro'
 import { ExportPdf } from '../export/ExportPdf'
 import { exporterChantier } from '../export/exporter'
 import { OuvrageForm } from '../ouvrages/OuvrageForm'
@@ -17,12 +19,14 @@ export function ChantierPage({ chantierId, onRetour, onOpenOuvrage }: Props) {
   const [chantier, setChantier] = useState<Chantier | null>()
   const [ouvrages, setOuvrages] = useState<OuvrageResume[]>()
   const [modale, setModale] = useState<'chantier' | 'ouvrage' | null>(null)
+  const { versionRecue } = useSynchro()
 
   const recharger = useCallback(() => {
     getChantier(chantierId).then((c) => setChantier(c ?? null))
     listOuvrages(chantierId).then(setOuvrages)
   }, [chantierId])
-  useEffect(recharger, [recharger])
+  // Recharge aussi quand des modifications arrivent du serveur.
+  useEffect(recharger, [recharger, versionRecue])
 
   if (chantier === null) {
     return (
@@ -49,6 +53,7 @@ export function ChantierPage({ chantierId, onRetour, onOpenOuvrage }: Props) {
           Modifier
         </button>
       </header>
+      <BarreSynchro />
 
       <dl className="fiche">
         {chantier.client && <Ligne titre="Client" valeur={chantier.client} />}
