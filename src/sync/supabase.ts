@@ -15,15 +15,16 @@ export function supabase(): SupabaseClient | undefined {
 
 const BUCKET = 'fichiers'
 
-function verifier<T>({ data, error }: { data: T; error: { message: string } | null }): T {
-  if (error) throw new Error(error.message)
+/** Erreur du serveur, précédée de l'étape qui a échoué pour savoir où chercher. */
+function verifier<T>({ data, error }: { data: T; error: { message: string } | null }, etape: string): T {
+  if (error) throw new Error(`${etape} : ${error.message}`)
   return data
 }
 
 export function serveurSupabase(c: SupabaseClient): Serveur {
   return {
     async envoyer(lignes) {
-      verifier(await c.from('elements').upsert(lignes, { onConflict: 'id' }))
+      verifier(await c.from('elements').upsert(lignes, { onConflict: 'id' }), 'Envoi des relevés')
     },
     async lire(depuis, debut, nombre) {
       let requete = c
@@ -33,22 +34,23 @@ export function serveurSupabase(c: SupabaseClient): Serveur {
         .order('id')
         .range(debut, debut + nombre - 1)
       if (depuis) requete = requete.gt('server_updated_at', depuis)
-      return verifier(await requete) as LigneLue[]
+      return verifier(await requete, 'Lecture des relevés') as LigneLue[]
     },
     async deposerFichier(chemin, fichier) {
       verifier(
         await c.storage
           .from(BUCKET)
           .upload(chemin, fichier, { upsert: true, contentType: fichier.type || 'application/octet-stream' }),
+        'Envoi des photos et sons',
       )
     },
     async telechargerFichier(chemin) {
-      const fichier = verifier(await c.storage.from(BUCKET).download(chemin))
+      const fichier = verifier(await c.storage.from(BUCKET).download(chemin), 'Téléchargement des photos et sons')
       if (!fichier) throw new Error(`Fichier introuvable : ${chemin}`)
       return fichier
     },
     async supprimerFichiers(chemins) {
-      verifier(await c.storage.from(BUCKET).remove(chemins))
+      verifier(await c.storage.from(BUCKET).remove(chemins), 'Suppression de fichiers')
     },
   }
 }
