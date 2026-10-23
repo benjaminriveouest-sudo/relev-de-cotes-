@@ -22,7 +22,8 @@ interface Empreinte {
 
 const tableLocale = (nom: TableSynchro) => db.table<Objet, string>(nom)
 const estTableSynchro = (nom: string): nom is TableSynchro => (TABLES_SYNCHRO as readonly string[]).includes(nom)
-const cleFichier = (table: string, id: string, champ: string) => `fichier:${table}:${id}:${champ}`
+/** Fichier déjà déposé à ce chemin (le chemin contient l'entreprise : changer d'entreprise renvoie les fichiers). */
+const cleFichier = (chemin: string) => `fichier:${chemin}`
 const empreinte = (b: Blob) => `${b.size}:${b.type}`
 
 async function lireMeta<T>(cle: string): Promise<T | undefined> {
@@ -68,10 +69,43 @@ function versServeur(objet: Objet): { data: Record<string, unknown>; fichiers: R
   return { data, fichiers }
 }
 
-/** Envoie la file d'attente au serveur. Renvoie le nombre de modifications envoyées. */
-export async function envoyer(serveur: Serveur, entrepriseId: string): Promise<number> {
+/** Le serveur refuse d'écraser un objet enregistré dans une autre entreprise (règles d'accès). */
+const estRefusAcces = (e: unknown) => e instanceof Error && /row-level security/i.test(e.message)
+
+/**
+ * Envoie un paquet. Si le serveur en refuse une partie (objets déjà envoyés dans une autre entreprise
+ * depuis cet appareil), renvoie ligne par ligne et rend les identifiants refusés, qui restent sur l'appareil.
+ */
+async function envoyerLignes(serveur: Serveur, lignes: Ligne[]): Promise<Set<string>> {
+  try {
+    await serveur.envoyer(lignes)
+    return new Set()
+  } catch (e) {
+    if (!estRefusAcces(e)) throw e
+  }
+  const refusees = new Set<string>()
+  for (const ligne of lignes) {
+    try {
+      await serveur.envoyer([ligne])
+    } catch (e) {
+      if (!estRefusAcces(e)) throw e
+      refusees.add(ligne.id)
+    }
+  }
+  return refusees
+}
+
+export interface ResultatEnvoi {
+  envoyes: number
+  /** Objets refusés par le serveur, gardés seulement sur cet appareil. */
+  refuses: number
+}
+
+/** Envoie la file d'attente au serveur. */
+export async function envoyer(serveur: Serveur, entrepriseId: string): Promise<ResultatEnvoi> {
   const file = await db.envois.toArray()
   let envoyes = 0
+  let refuses = 0
   for (let i = 0; i < file.length; i += PAQUET_ENVOI) {
     const paquet = file.slice(i, i + PAQUET_ENVOI)
     const lignes: Ligne[] = []
@@ -87,26 +121,28 @@ export async function envoyer(serveur: Serveur, entrepriseId: string): Promise<n
       const { data, fichiers } = versServeur(objet)
       // Les fichiers d'abord : une ligne présente sur le serveur a toujours ses fichiers.
       for (const [champ, fichier] of Object.entries(fichiers)) {
-        const cle = cleFichier(e.table, e.id, champ)
+        const chemin = cheminFichier(entrepriseId, e.table, e.id, champ)
+        const cle = cleFichier(chemin)
         if ((await lireMeta<string>(cle)) === empreinte(fichier)) continue
-        await serveur.deposerFichier(cheminFichier(entrepriseId, e.table, e.id, champ), fichier)
+        await serveur.deposerFichier(chemin, fichier)
         await db.meta.put({ cle, valeur: empreinte(fichier) })
       }
       lignes.push({ ...ligne, data, updated_at: objet.updatedAt ?? e.at, deleted: false })
     }
-    await serveur.envoyer(lignes)
+    const refusees = await envoyerLignes(serveur, lignes)
+    refuses += refusees.size
     if (aEffacer.length) await serveur.supprimerFichiers(aEffacer).catch(() => undefined)
     // Une entrée modifiée pendant l'envoi reste dans la file pour le prochain passage.
     await db.transaction('rw', db.envois, async () => {
       for (const e of paquet) {
         if ((await db.envois.get(e.cle))?.jeton === e.jeton) {
           await db.envois.delete(e.cle)
-          envoyes++
+          if (!refusees.has(e.id)) envoyes++
         }
       }
     })
   }
-  return envoyes
+  return { envoyes, refuses }
 }
 
 interface Recu {
@@ -126,11 +162,12 @@ async function versTelephone(serveur: Serveur, table: TableSynchro, ligne: Ligne
       objet[champ] = existant
       continue
     }
-    const telecharge = await serveur.telechargerFichier(cheminFichier(ligne.entreprise_id, table, ligne.id, champ))
+    const chemin = cheminFichier(ligne.entreprise_id, table, ligne.id, champ)
+    const telecharge = await serveur.telechargerFichier(chemin)
     // Le stockage peut perdre le type : on garde celui d'origine (lecture audio sur iPhone).
     const fichier = e.type && telecharge.type !== e.type ? new Blob([telecharge], { type: e.type }) : telecharge
     objet[champ] = fichier
-    await db.meta.put({ cle: cleFichier(table, ligne.id, champ), valeur: empreinte(fichier) })
+    await db.meta.put({ cle: cleFichier(chemin), valeur: empreinte(fichier) })
   }
   return objet
 }
@@ -188,9 +225,12 @@ export async function recevoir(serveur: Serveur): Promise<number> {
 }
 
 /** Un passage complet : envoi puis réception. */
-export async function synchroniser(serveur: Serveur, entrepriseId: string): Promise<{ envoyes: number; recus: number }> {
+export async function synchroniser(
+  serveur: Serveur,
+  entrepriseId: string,
+): Promise<ResultatEnvoi & { recus: number }> {
   await preparerEntreprise(entrepriseId)
-  const envoyes = await envoyer(serveur, entrepriseId)
+  const envoi = await envoyer(serveur, entrepriseId)
   const recus = await recevoir(serveur)
-  return { envoyes, recus }
+  return { ...envoi, recus }
 }

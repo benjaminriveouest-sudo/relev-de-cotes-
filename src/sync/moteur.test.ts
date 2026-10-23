@@ -15,6 +15,9 @@ class FauxServeur implements Serveur {
   private horloge = Date.parse('2026-10-23T10:00:00Z')
 
   async envoyer(lignes: Ligne[]) {
+    // Comme les règles d'accès : tout le paquet est refusé si une ligne appartient à une autre entreprise.
+    if (lignes.some((l) => this.lignes.has(l.id) && this.lignes.get(l.id)!.entreprise_id !== l.entreprise_id))
+      throw new Error('Envoi des relevés : new row violates row-level security policy (USING expression)')
     for (const l of lignes) this.ecrire(l)
   }
   ecrire(l: Ligne) {
@@ -146,6 +149,30 @@ describe('envoi', () => {
     await envoyer(serveur, ENT)
     expect(serveur.lignes.get('p1')?.deleted).toBe(true)
     expect(serveur.fichiers.size).toBe(0)
+  })
+})
+
+describe('changement d’entreprise sur un même appareil', () => {
+  it('renvoie les photos dans la nouvelle entreprise', async () => {
+    await preparerEntreprise(ENT)
+    await addPhoto(photo('p1', 'o1'))
+    await envoyer(serveur, ENT)
+    serveur = new FauxServeur()
+    await preparerEntreprise('ent-2')
+    await envoyer(serveur, 'ent-2')
+    expect(serveur.depots.sort()).toEqual(['ent-2/photos/p1/blob', 'ent-2/photos/p1/thumb'])
+  })
+
+  it('garde sur l’appareil ce qui appartient déjà à une autre entreprise, et envoie le reste', async () => {
+    await preparerEntreprise(ENT)
+    await saveChantier(chantier('c1'))
+    await envoyer(serveur, ENT)
+    await preparerEntreprise('ent-2')
+    await saveChantier(chantier('c2'))
+    expect(await envoyer(serveur, 'ent-2')).toEqual({ envoyes: 1, refuses: 1 })
+    expect(serveur.lignes.get('c2')?.entreprise_id).toBe('ent-2')
+    expect(serveur.lignes.get('c1')?.entreprise_id).toBe(ENT)
+    expect(await nombreEnAttente()).toBe(0)
   })
 })
 
