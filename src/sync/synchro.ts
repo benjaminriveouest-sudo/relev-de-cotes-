@@ -68,8 +68,13 @@ async function passage() {
   }
   changer({ enCours: true, horsLigne: false })
   try {
-    const { recus } = await synchroniser(serveurSupabase(c), compte.membre.entrepriseId)
-    changer({ erreur: undefined, ...(recus ? { versionRecue: etat.versionRecue + 1 } : {}) })
+    const { recus, refuses } = await synchroniser(serveurSupabase(c), compte.membre.entrepriseId)
+    changer({
+      erreur: refuses
+        ? `${refuses} élément${refuses > 1 ? 's' : ''} déjà enregistré${refuses > 1 ? 's' : ''} dans une autre entreprise, gardé${refuses > 1 ? 's' : ''} sur cet appareil seulement`
+        : undefined,
+      ...(recus ? { versionRecue: etat.versionRecue + 1 } : {}),
+    })
   } catch (e) {
     changer({ erreur: messageErreur(e) })
   } finally {
