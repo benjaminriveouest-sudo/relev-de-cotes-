@@ -3,19 +3,27 @@ import Dexie from 'dexie'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Annotations, Chantier, Ouvrage, Photo, StatutOuvrage } from '../models/types'
 import {
+  addCroquis,
   addPhoto,
   db,
   deleteChantier,
+  deleteCroquis,
   deleteOuvrage,
   deletePhoto,
   getChantier,
+  getNote,
   listChantiers,
+  listCroquis,
+  listNotesVocales,
   listOuvrages,
   listPhotos,
   loadAnnotations,
   NOM_BASE,
+  nouveauCroquis,
   saveAnnotations,
   saveChantier,
+  saveNote,
+  saveNoteVocale,
   saveOuvrage,
 } from './db'
 
@@ -52,6 +60,7 @@ function calque(photoId: string, n: number): Annotations {
       updatedAt: 1,
     })),
     reperes: [{ id: `${photoId}-r`, photoId, position: { x: 5, y: 5 }, texte: 'Axe poteau', updatedAt: 1 }],
+    traits: [],
   }
 }
 
@@ -165,6 +174,102 @@ describe('chantiers et ouvrages', () => {
     expect((await db.ouvrages.toArray()).map((o) => o.id)).toEqual(['o2'])
     expect((await db.photos.toArray()).map((p) => p.id)).toEqual(['p2'])
     expect(await db.cotes.count()).toBe(0)
+  })
+})
+
+describe('croquis et notes', () => {
+  beforeEach(async () => {
+    await db.delete()
+    await db.open()
+  })
+
+  function avecTrait(croquisId: string, n: number): Annotations {
+    return {
+      ...calque(croquisId, n),
+      traits: [{ id: `${croquisId}-t`, croquisId, points: [0, 0, 100, 0], updatedAt: 1 }],
+    }
+  }
+
+  it('sauvegarde un croquis avec ses traits, ses cotes et ses repères', async () => {
+    const c = nouveauCroquis('o1')
+    await addCroquis(c)
+    await saveAnnotations(c.id, avecTrait(c.id, 2))
+    const liste = await listCroquis('o1')
+    expect(liste).toHaveLength(1)
+    expect(liste[0].annotations.traits[0].points).toEqual([0, 0, 100, 0])
+    expect(liste[0].annotations.cotes).toHaveLength(2)
+    expect(await listCroquis('o2')).toEqual([])
+  })
+
+  it('supprimer un croquis supprime son calque, pas celui des photos', async () => {
+    const c = nouveauCroquis('o1')
+    await addCroquis(c)
+    await addPhoto(photo('p1', 1))
+    await saveAnnotations(c.id, avecTrait(c.id, 2))
+    await saveAnnotations('p1', calque('p1', 1))
+    await deleteCroquis(c.id)
+    expect(await db.croquis.count()).toBe(0)
+    expect(await db.traits.count()).toBe(0)
+    expect((await db.cotes.toArray()).map((x) => x.photoId)).toEqual(['p1'])
+  })
+
+  it('garde une seule note par ouvrage, texte et cases', async () => {
+    const vide = await getNote('o1')
+    expect(vide).toMatchObject({ texte: '', cases: [] })
+    await saveNote({ ...vide, texte: 'Dalle fissurée', cases: ['support.beton'] })
+    await saveNote({ ...(await getNote('o1')), cases: ['support.beton', 'acces.nacelle'] })
+    expect(await db.notes.count()).toBe(1)
+    expect(await getNote('o1')).toMatchObject({ texte: 'Dalle fissurée', cases: ['support.beton', 'acces.nacelle'] })
+  })
+
+  it('remplace une note vocale enregistrée par morceaux', async () => {
+    const note = { id: 'v1', ouvrageId: 'o1', audio: new Blob(['a']), dureeMs: 1000, createdAt: 1, updatedAt: 1 }
+    await saveNoteVocale(note)
+    await saveNoteVocale({ ...note, audio: new Blob(['ab']), dureeMs: 2000 })
+    const liste = await listNotesVocales('o1')
+    expect(liste.map((n) => n.dureeMs)).toEqual([2000])
+  })
+
+  it('supprimer un ouvrage supprime aussi croquis, notes et notes vocales', async () => {
+    await saveOuvrage(ouvrage('o1', 'c1'))
+    await saveOuvrage(ouvrage('o2', 'c1'))
+    const c = nouveauCroquis('o1')
+    await addCroquis(c)
+    await saveAnnotations(c.id, avecTrait(c.id, 1))
+    await saveNote({ ...(await getNote('o1')), texte: 'x' })
+    await saveNote({ ...(await getNote('o2')), texte: 'y' })
+    await saveNoteVocale({ id: 'v1', ouvrageId: 'o1', audio: new Blob(['a']), dureeMs: 1, createdAt: 1, updatedAt: 1 })
+    await deleteOuvrage('o1')
+    expect(await db.croquis.count()).toBe(0)
+    expect(await db.traits.count()).toBe(0)
+    expect(await db.cotes.count()).toBe(0)
+    expect((await db.notes.toArray()).map((n) => n.ouvrageId)).toEqual(['o2'])
+    expect(await db.notesVocales.count()).toBe(0)
+  })
+})
+
+describe('mise à jour depuis l’étape 2', () => {
+  it('garde chantiers, ouvrages, photos et cotes', async () => {
+    db.close()
+    await Dexie.delete(NOM_BASE)
+    const v2 = new Dexie(NOM_BASE)
+    v2.version(2).stores({
+      photos: 'id, createdAt, ouvrageId',
+      cotes: 'id, photoId',
+      reperes: 'id, photoId',
+      chantiers: 'id, updatedAt',
+      ouvrages: 'id, chantierId',
+    })
+    await v2.table('chantiers').add(chantier('c1'))
+    await v2.table('ouvrages').add(ouvrage('o1', 'c1'))
+    await v2.table('photos').add(photo('p1', 1))
+    await v2.table('cotes').bulkAdd(calque('p1', 2).cotes)
+    v2.close()
+
+    await db.open()
+    expect((await listChantiers()).map((r) => r.chantier.id)).toEqual(['c1'])
+    expect((await listPhotos('o1')).map((r) => [r.photo.id, r.nbCotes])).toEqual([['p1', 2]])
+    expect((await loadAnnotations('p1')).traits).toEqual([])
   })
 })
 

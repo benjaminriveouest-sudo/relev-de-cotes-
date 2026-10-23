@@ -6,7 +6,8 @@ const TAILLE = 150
 const GROSSISSEMENT = 3
 
 interface Props {
-  image: HTMLImageElement
+  /** Dessine le fond (photo ou feuille) en unités image ; `echelle` = pixels loupe par unité. */
+  dessinerFond: (ctx: CanvasRenderingContext2D, echelle: number) => void
   view: View
   /** Position du doigt à l'écran. */
   cible: Point
@@ -16,7 +17,7 @@ interface Props {
 }
 
 /** Agrandit la zone sous le doigt pour viser précisément : le point se pose au centre de la croix. */
-export function Loupe({ image, view, cible, depart, largeurCadre }: Props) {
+export function Loupe({ dessinerFond, view, cible, depart, largeurCadre }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
   const dpr = window.devicePixelRatio || 1
 
@@ -31,7 +32,7 @@ export function Loupe({ image, view, cible, depart, largeurCadre }: Props) {
     ctx.save()
     ctx.translate(TAILLE / 2 - centre.x * echelle, TAILLE / 2 - centre.y * echelle)
     ctx.scale(echelle, echelle)
-    ctx.drawImage(image, 0, 0)
+    dessinerFond(ctx, echelle)
     ctx.restore()
 
     if (depart) {
@@ -60,7 +61,7 @@ export function Loupe({ image, view, cible, depart, largeurCadre }: Props) {
       ctx.lineTo(TAILLE - 10, TAILLE / 2)
       ctx.stroke()
     }
-  }, [image, view, cible, depart, dpr])
+  }, [dessinerFond, view, cible, depart, dpr])
 
   // En haut à gauche, ou à droite si le doigt est dessous.
   const aGauche = !(cible.x < TAILLE + 40 && cible.y < TAILLE + 60)

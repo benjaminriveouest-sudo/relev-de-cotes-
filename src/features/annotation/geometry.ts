@@ -61,3 +61,32 @@ export function angleLisible(a: Point, b: Point): number {
   if (deg <= -90) deg += 180
   return deg
 }
+
+/** Distance d'un point à une suite de segments (points à plat x1, y1, x2, y2…). */
+export function distanceToPolyline(p: Point, points: number[]): number {
+  if (points.length < 2) return Infinity
+  let d = distance(p, { x: points[0], y: points[1] })
+  for (let i = 2; i + 1 < points.length; i += 2) {
+    d = Math.min(d, distanceToSegment(p, { x: points[i - 2], y: points[i - 1] }, { x: points[i], y: points[i + 1] }))
+  }
+  return d
+}
+
+/**
+ * Aimantation sur un croquis : d'abord les bouts de traits et de cotes existants,
+ * sinon le croisement du quadrillage le plus proche. Le rayon est en unités de feuille.
+ */
+export function aimanter(p: Point, cibles: Point[], pas: number, rayon: number): Point {
+  let meilleur: Point | null = null
+  let dMin = rayon
+  for (const c of cibles) {
+    const d = distance(p, c)
+    if (d < dMin) {
+      dMin = d
+      meilleur = c
+    }
+  }
+  if (meilleur) return meilleur
+  const noeud = { x: Math.round(p.x / pas) * pas, y: Math.round(p.y / pas) * pas }
+  return distance(p, noeud) < rayon ? noeud : p
+}

@@ -263,3 +263,27 @@ body { overscroll-behavior: none; }
 .formulaire .puces { margin: 0; }
 .formulaire .modale-actions { margin-top: 6px; }
 .btn-large { width: 100%; }
+
+/* Croquis : deux rangées d'outils (tracé, puis annuler / rétablir). */
+.outils-croquis { flex-wrap: wrap; }
+.outils-croquis .outils-ligne:first-child { flex-basis: 100%; }
+.outils-croquis .outils-ligne:first-child .btn { font-size: 0.85rem; }
+.outils-croquis .outils-ligne:last-child { flex: 1; justify-content: flex-end; }
+.apercu-croquis { display: block; width: 100%; aspect-ratio: 4 / 3; background: #fff; }
+
+/* Notes. */
+.notes { padding: 4px 12px 8px; }
+.cases-groupe { margin: 0 0 4px; padding: 0; border: none; }
+.cases-groupe legend { padding: 0; font-size: 0.9rem; font-weight: 700; color: #ccc; }
+.cases-groupe .puces { margin: 6px 0 10px; }
+.note-texte { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; font-weight: 700; color: #ccc; }
+.note-texte textarea { min-height: 120px; padding: 10px 12px; font-size: 1rem; line-height: 1.4; resize: vertical; }
+.etat-sauvegarde { min-height: 1.2em; margin: 6px 0 0; font-size: 0.85rem; color: #999; }
+
+/* Notes vocales. */
+.btn-enregistre { animation: clignote 1.2s ease-in-out infinite; }
+@keyframes clignote { 50% { background: #3a1208; } }
+.note-vocale { cursor: default; gap: 8px; }
+.note-vocale-entete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.note-vocale-entete .carte-titre { flex: 1; }
+.note-vocale audio { width: 100%; }

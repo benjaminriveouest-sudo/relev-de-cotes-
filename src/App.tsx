@@ -3,6 +3,7 @@ import { demanderStockagePersistant } from './db/db'
 import { Editor } from './features/annotation/Editor'
 import { ChantierList } from './features/chantiers/ChantierList'
 import { ChantierPage } from './features/chantiers/ChantierPage'
+import { CroquisEditor } from './features/croquis/CroquisEditor'
 import { OuvragePage } from './features/ouvrages/OuvragePage'
 
 type Route =
@@ -10,6 +11,7 @@ type Route =
   | { ecran: 'chantier'; id: string }
   | { ecran: 'ouvrage'; id: string }
   | { ecran: 'photo'; ouvrageId: string; id: string }
+  | { ecran: 'croquis'; ouvrageId: string; id: string }
 
 /** Route dans l'adresse (#/ouvrage/<id>…) : si le téléphone recharge l'appli, on revient au même endroit. */
 function lireRoute(): Route {
@@ -17,6 +19,8 @@ function lireRoute(): Route {
   if (parties[0] === 'chantier' && parties[1]) return { ecran: 'chantier', id: parties[1] }
   if (parties[0] === 'ouvrage' && parties[1] && parties[2] === 'photo' && parties[3])
     return { ecran: 'photo', ouvrageId: parties[1], id: parties[3] }
+  if (parties[0] === 'ouvrage' && parties[1] && parties[2] === 'croquis' && parties[3])
+    return { ecran: 'croquis', ouvrageId: parties[1], id: parties[3] }
   if (parties[0] === 'ouvrage' && parties[1]) return { ecran: 'ouvrage', id: parties[1] }
   return { ecran: 'chantiers' }
 }
@@ -38,6 +42,8 @@ export default function App() {
   switch (route.ecran) {
     case 'photo':
       return <Editor key={route.id} photoId={route.id} onRetour={() => aller('ouvrage', route.ouvrageId)} />
+    case 'croquis':
+      return <CroquisEditor key={route.id} croquisId={route.id} onRetour={() => aller('ouvrage', route.ouvrageId)} />
     case 'ouvrage':
       return (
         <OuvragePage
@@ -45,6 +51,7 @@ export default function App() {
           ouvrageId={route.id}
           onRetour={(chantierId) => (chantierId ? aller('chantier', chantierId) : aller())}
           onOpenPhoto={(photoId) => aller('ouvrage', route.id, 'photo', photoId)}
+          onOpenCroquis={(croquisId) => aller('ouvrage', route.id, 'croquis', croquisId)}
         />
       )
     case 'chantier':

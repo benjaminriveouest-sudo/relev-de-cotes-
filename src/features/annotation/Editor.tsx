@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Image as KonvaImage, Layer, Stage } from 'react-konva'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Image as KonvaImage, Layer, Shape, Stage } from 'react-konva'
 import { deletePhoto, getPhoto, loadAnnotations, saveAnnotations } from '../../db/db'
 import { newId } from '../../models/id'
-import type { Annotations, Cote, Photo, Point } from '../../models/types'
+import type { Annotations, Cote, Photo, Point, Trait } from '../../models/types'
 import { useObjectUrl } from '../../ui/useObjectUrl'
+import { boutsDesTraits, dessinerFeuille, type Feuille } from '../croquis/feuille'
 import {
+  aimanter,
   clampToImage,
   distance,
+  distanceToPolyline,
   distanceToSegment,
   fitView,
   pinchView,
@@ -22,12 +25,14 @@ import { PaveNumerique } from './PaveNumerique'
 import { RepereDialog } from './RepereDialog'
 import { CoteShape, LigneProvisoire, PointProvisoire, Poignee, RepereShape, texteCote } from './shapes'
 
-type Mode = 'selection' | 'cote' | 'repere'
-type Selection = { type: 'cote' | 'repere'; id: string } | null
+type Mode = 'selection' | 'cote' | 'repere' | 'libre' | 'droite'
+type Selection = { type: 'cote' | 'repere' | 'trait'; id: string } | null
 
 type Geste =
   | { type: 'aucun' }
   | { type: 'placer' }
+  | { type: 'libre' }
+  | { type: 'droite'; a: Point }
   | { type: 'poignee'; coteId: string; bout: 'a' | 'b'; bouge: boolean }
   | { type: 'repere'; repereId: string; bouge: boolean }
   | { type: 'pan'; depart: Point; vueDepart: View; bouge: boolean; touche: Selection }
@@ -35,6 +40,10 @@ type Geste =
 
 /** Zone de toucher autour d'une ligne ou d'une poignée, en pixels écran (doigt, voire gant). */
 const RAYON_TOUCHER = 28
+/** Distance d'aimantation sur un croquis, en pixels écran. */
+const RAYON_AIMANT = 18
+/** Écart minimal entre deux points d'un tracé à main levée, en pixels écran. */
+const PAS_TRACE = 3
 const SEUIL_MOUVEMENT = 8
 const ZOOM_MAX = 8 // 1 pixel image = 8 pixels écran
 
@@ -76,23 +85,65 @@ export function Editor({ photoId, onRetour }: Props) {
   }
   if (!photo || !historique) return <div className="ecran" />
 
-  return <EditorCharge photo={photo} historique={historique} setHistorique={setHistorique} onRetour={onRetour} />
+  return <EditeurPhoto photo={photo} historique={historique} setHistorique={setHistorique} onRetour={onRetour} />
 }
 
-interface EditorChargeProps {
+interface EditeurPhotoProps {
   photo: Photo
   historique: History<Annotations>
   setHistorique: (h: History<Annotations>) => void
   onRetour: () => void
 }
 
-function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChargeProps) {
+function EditeurPhoto({ photo, ...props }: EditeurPhotoProps) {
   const url = useObjectUrl(photo.blob)
   const image = useImage(url)
+  return (
+    <EditeurCalque
+      {...props}
+      supportId={photo.id}
+      largeur={photo.width}
+      hauteur={photo.height}
+      image={image}
+      questionSuppression="Supprimer cette photo et toutes ses cotes ?"
+      supprimer={() => deletePhoto(photo.id)}
+    />
+  )
+}
+
+interface EditeurCalqueProps {
+  /** Photo ou croquis annoté. */
+  supportId: string
+  largeur: number
+  hauteur: number
+  /** Fond d'une photo (pas encore chargé : undefined). */
+  image?: HTMLImageElement
+  /** Fond d'un croquis : feuille quadrillée, avec les outils de tracé en plus. */
+  feuille?: Feuille
+  historique: History<Annotations>
+  setHistorique: (h: History<Annotations>) => void
+  onRetour: () => void
+  questionSuppression: string
+  supprimer: () => Promise<void>
+}
+
+/** Éditeur de cotes et repères, commun aux photos et aux croquis. */
+export function EditeurCalque({
+  supportId,
+  largeur,
+  hauteur,
+  image,
+  feuille,
+  historique,
+  setHistorique,
+  onRetour,
+  questionSuppression,
+  supprimer,
+}: EditeurCalqueProps) {
   const cadreRef = useRef<HTMLDivElement>(null)
   const taille = useTaille(cadreRef)
 
-  const [mode, setMode] = useState<Mode>('cote')
+  const [mode, setMode] = useState<Mode>(feuille ? 'droite' : 'cote')
   const [selection, setSelection] = useState<Selection>(null)
   const [view, setView] = useState<View>()
   const [vise, setVise] = useState<Point | null>(null) // doigt à l'écran, pour la loupe
@@ -100,6 +151,7 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
   const [brouillon, setBrouillon] = useState<Annotations | null>(null) // pendant un glisser
   const [dialogue, setDialogue] = useState<Dialogue>(null)
   const [erreur, setErreur] = useState<string>()
+  const [trace, setTrace] = useState<number[] | null>(null) // trait en cours (unités image)
 
   const pointeurs = useRef(new Map<number, Point>())
   const geste = useRef<Geste>({ type: 'aucun' })
@@ -113,14 +165,14 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
       premierRendu.current = false
       return
     }
-    saveAnnotations(photo.id, historique.present).catch((e) =>
+    saveAnnotations(supportId, historique.present).catch((e) =>
       setErreur(`Sauvegarde impossible : ${e instanceof Error ? e.message : e}`),
     )
-  }, [photo.id, historique.present])
+  }, [supportId, historique.present])
 
   const vueAjustee = useMemo(
-    () => (taille ? fitView(photo.width, photo.height, taille.w, taille.h) : undefined),
-    [photo.width, photo.height, taille],
+    () => (taille ? fitView(largeur, hauteur, taille.w, taille.h) : undefined),
+    [largeur, hauteur, taille],
   )
   useEffect(() => {
     if (vueAjustee) setView(vueAjustee)
@@ -131,6 +183,21 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
   function valider(next: Annotations) {
     setHistorique(commit(historique, next))
   }
+
+  // Le trait en cours s'affiche avec les autres, pour le voir aussi dans la loupe.
+  const traits: Pick<Trait, 'id' | 'points'>[] = useMemo(
+    () => (trace ? [...ann.traits, { id: 'en-cours', points: trace }] : ann.traits),
+    [ann.traits, trace],
+  )
+  const traitSelectionneId = selection?.type === 'trait' ? selection.id : undefined
+  const dessinerFond = useCallback(
+    (ctx: CanvasRenderingContext2D, echelle: number) => {
+      if (feuille) dessinerFeuille(ctx, feuille, traits, echelle, traitSelectionneId)
+      else if (image) ctx.drawImage(image, 0, 0)
+    },
+    [feuille, image, traits, traitSelectionneId],
+  )
+  const fondPret = !!feuille || !!image
 
   function changerMode(m: Mode) {
     setMode(m)
@@ -144,7 +211,18 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
   }
 
   function versImage(p: Point, v: View): Point {
-    return clampToImage(toImage(p, v), photo.width, photo.height)
+    return clampToImage(toImage(p, v), largeur, hauteur)
+  }
+
+  /** Point visé : sur un croquis, il s'accroche aux bouts de traits et de cotes, ou au quadrillage. */
+  function viser(p: Point, v: View, sauf?: string): Point {
+    const pt = versImage(p, v)
+    if (!feuille) return pt
+    const cibles = [
+      ...boutsDesTraits(ann.traits),
+      ...ann.cotes.filter((c) => c.id !== sauf).flatMap((c) => [c.a, c.b]),
+    ]
+    return aimanter(pt, cibles, feuille.pas, RAYON_AIMANT / v.scale)
   }
 
   function toucher(p: Point, v: View): Selection {
@@ -162,11 +240,17 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
         meilleure = { type: 'cote', id: c.id }
       }
     }
-    return meilleure
+    if (meilleure) return meilleure
+    const pt = toImage(p, v)
+    for (const t of [...ann.traits].reverse()) {
+      if (distanceToPolyline(pt, t.points) * v.scale < RAYON_TOUCHER) return { type: 'trait', id: t.id }
+    }
+    return null
   }
 
   function annulerGeste() {
     setBrouillon(null)
+    setTrace(null)
     setVise(null)
     geste.current = { type: 'aucun' }
   }
@@ -188,6 +272,18 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
 
     if (mode === 'cote' || mode === 'repere') {
       geste.current = { type: 'placer' }
+      setVise(p)
+      return
+    }
+    if (mode === 'libre') {
+      const pt = versImage(p, view)
+      geste.current = { type: 'libre' }
+      setTrace([pt.x, pt.y])
+      return
+    }
+    if (mode === 'droite') {
+      const a = viser(p, view)
+      geste.current = { type: 'droite', a }
       setVise(p)
       return
     }
@@ -229,9 +325,24 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
       case 'placer':
         setVise(p)
         break
+      case 'libre': {
+        const pt = versImage(p, view)
+        setTrace((t) => {
+          if (!t) return t
+          const dernier = { x: t[t.length - 2], y: t[t.length - 1] }
+          return distance(toScreen(dernier, view), toScreen(pt, view)) < PAS_TRACE ? t : [...t, pt.x, pt.y]
+        })
+        break
+      }
+      case 'droite': {
+        const b = viser(p, view)
+        setTrace([g.a.x, g.a.y, b.x, b.y])
+        setVise(p)
+        break
+      }
       case 'poignee': {
         g.bouge = true
-        const pt = versImage(p, view)
+        const pt = viser(p, view, g.coteId)
         const base = brouillon ?? historique.present
         setBrouillon({
           ...base,
@@ -264,20 +375,30 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
     const g = geste.current
     geste.current = { type: 'aucun' }
     setVise(null)
+    const traceFini = trace
+    setTrace(null)
     if (!view || e.type === 'pointercancel') {
       setBrouillon(null)
       return
     }
 
     switch (g.type) {
+      case 'libre':
+        if (traceFini && traceFini.length >= 4) ajouterTrait(traceFini)
+        break
+      case 'droite': {
+        const b = viser(p, view)
+        if (distance(toScreen(g.a, view), toScreen(b, view)) > SEUIL_MOUVEMENT) ajouterTrait([g.a.x, g.a.y, b.x, b.y])
+        break
+      }
       case 'placer': {
-        const pt = versImage(p, view)
+        const pt = mode === 'cote' ? viser(p, view) : versImage(p, view)
         if (mode === 'repere') {
           setDialogue({ type: 'repere', position: pt, repereId: null, texte: '' })
         } else if (!pointA) {
           setPointA(pt)
         } else if (distance(toScreen(pointA, view), p) > SEUIL_MOUVEMENT) {
-          const cote: Cote = { id: newId(), photoId: photo.id, a: pointA, b: pt, valeurMm: null, libelle: '', updatedAt: Date.now() }
+          const cote: Cote = { id: newId(), photoId: supportId, a: pointA, b: pt, valeurMm: null, libelle: '', updatedAt: Date.now() }
           setPointA(null)
           setDialogue({ type: 'valeur', cote, nouvelle: true })
         }
@@ -292,6 +413,10 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
         if (!g.bouge) setSelection(g.touche)
         break
     }
+  }
+
+  function ajouterTrait(points: number[]) {
+    valider({ ...ann, traits: [...ann.traits, { id: newId(), croquisId: supportId, points, updatedAt: Date.now() }] })
   }
 
   function onWheel(e: React.WheelEvent) {
@@ -309,13 +434,14 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
     valider({
       cotes: ann.cotes.filter((c) => c.id !== selection.id),
       reperes: ann.reperes.filter((r) => r.id !== selection.id),
+      traits: ann.traits.filter((t) => t.id !== selection.id),
     })
     setSelection(null)
   }
 
-  async function supprimerPhoto() {
-    if (!window.confirm('Supprimer cette photo et toutes ses cotes ?')) return
-    await deletePhoto(photo.id)
+  async function supprimerSupport() {
+    if (!window.confirm(questionSuppression)) return
+    await supprimer()
     onRetour()
   }
 
@@ -327,24 +453,30 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
         : 'Touchez le premier point de la cote'
       : mode === 'repere'
         ? "Touchez l'endroit du repère"
-        : selection
+        : mode === 'libre'
+          ? 'Dessinez au doigt · 2 doigts pour déplacer'
+          : mode === 'droite'
+            ? 'Glissez du début à la fin du trait'
+            : selection?.type === 'trait'
+              ? 'Trait sélectionné'
+              : selection
           ? 'Glissez les ronds pour ajuster'
           : 'Touchez une cote pour la modifier'
 
   return (
     <div className="ecran editeur">
       <header className="barre">
-        <button className="btn btn-icone" onClick={onRetour} aria-label="Retour aux photos">
+        <button className="btn btn-icone" onClick={onRetour} aria-label="Retour à l'ouvrage">
           ←
         </button>
         <span className="barre-titre">
           {ann.cotes.length} cote{ann.cotes.length > 1 ? 's' : ''}
           {nbSansValeur > 0 && <span className="alerte"> · {nbSansValeur} sans valeur</span>}
         </span>
-        <button className="btn btn-icone" onClick={() => vueAjustee && setView(vueAjustee)} aria-label="Voir toute la photo">
+        <button className="btn btn-icone" onClick={() => vueAjustee && setView(vueAjustee)} aria-label="Tout voir">
           ⤢
         </button>
-        <button className="btn btn-icone" onClick={supprimerPhoto} aria-label="Supprimer la photo">
+        <button className="btn btn-icone" onClick={supprimerSupport} aria-label={feuille ? 'Supprimer le croquis' : 'Supprimer la photo'}>
           🗑
         </button>
       </header>
@@ -358,10 +490,24 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
         onPointerCancel={onPointerUp}
         onWheel={onWheel}
       >
-        {taille && view && image && (
+        {taille && view && fondPret && (
           <Stage width={taille.w} height={taille.h} listening={false}>
             <Layer listening={false}>
-              <KonvaImage image={image} x={view.x} y={view.y} scaleX={view.scale} scaleY={view.scale} />
+              {image && <KonvaImage image={image} x={view.x} y={view.y} scaleX={view.scale} scaleY={view.scale} />}
+              {feuille && (
+                <Shape
+                  listening={false}
+                  perfectDrawEnabled={false}
+                  sceneFunc={(ctx) => {
+                    const c = ctx._context
+                    c.save()
+                    c.translate(view.x, view.y)
+                    c.scale(view.scale, view.scale)
+                    dessinerFond(c, view.scale)
+                    c.restore()
+                  }}
+                />
+              )}
             </Layer>
             <Layer listening={false}>
               {ann.cotes.map((c) => (
@@ -386,18 +532,30 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
                   <Poignee p={toScreen(coteSelectionnee.b, view)} />
                 </>
               )}
-              {pointA && vise && <LigneProvisoire a={toScreen(pointA, view)} b={toScreen(versImage(vise, view), view)} />}
+              {pointA && vise && <LigneProvisoire a={toScreen(pointA, view)} b={toScreen(viser(vise, view), view)} />}
               {pointA && <PointProvisoire p={toScreen(pointA, view)} />}
+              {mode === 'droite' && trace && (
+                <>
+                  <PointProvisoire p={toScreen({ x: trace[0], y: trace[1] }, view)} />
+                  <PointProvisoire p={toScreen({ x: trace[2], y: trace[3] }, view)} />
+                </>
+              )}
             </Layer>
           </Stage>
         )}
-        {vise && view && image && taille && (
-          <Loupe image={image} view={view} cible={vise} depart={mode === 'cote' ? pointA : null} largeurCadre={taille.w} />
+        {vise && view && fondPret && taille && (
+          <Loupe
+            dessinerFond={dessinerFond}
+            view={view}
+            cible={vise}
+            depart={mode === 'cote' ? pointA : null}
+            largeurCadre={taille.w}
+          />
         )}
         <div className="consigne">{erreur ?? consigne}</div>
       </div>
 
-      <footer className="outils">
+      <footer className={`outils ${feuille ? 'outils-croquis' : ''}`}>
         {selection ? (
           <div className="outils-ligne">
             {coteSelectionnee && (
@@ -424,6 +582,16 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
           </div>
         ) : (
           <div className="outils-ligne">
+            {feuille && (
+              <>
+                <button className={`btn ${mode === 'droite' ? 'actif' : ''}`} onClick={() => changerMode('droite')}>
+                  ╱ Droite
+                </button>
+                <button className={`btn ${mode === 'libre' ? 'actif' : ''}`} onClick={() => changerMode('libre')}>
+                  ✎ Libre
+                </button>
+              </>
+            )}
             <button className={`btn ${mode === 'cote' ? 'actif' : ''}`} onClick={() => changerMode('cote')}>
               ↔ Cote
             </button>
@@ -478,7 +646,7 @@ function EditorCharge({ photo, historique, setHistorique, onRetour }: EditorChar
               ...ann,
               reperes: id
                 ? ann.reperes.map((r) => (r.id === id ? { ...r, texte, updatedAt: Date.now() } : r))
-                : [...ann.reperes, { id: newId(), photoId: photo.id, position: dialogue.position, texte, updatedAt: Date.now() }],
+                : [...ann.reperes, { id: newId(), photoId: supportId, position: dialogue.position, texte, updatedAt: Date.now() }],
             })
             setDialogue(null)
           }}
