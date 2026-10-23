@@ -21,7 +21,7 @@ export function BarreSynchro({ onActualiser }: { onActualiser?: () => void }) {
   if (synchro.enCours) texte = '⟳ Synchronisation…'
   else if (synchro.horsLigne) texte = n ? `Hors ligne · ${attente}` : 'Hors ligne · tout est enregistré sur le téléphone'
   else if (synchro.erreur) {
-    texte = `⚠ Envoi impossible${n ? ` · ${attente}` : ''} · toucher pour réessayer`
+    texte = `⚠ Envoi impossible${n ? ` · ${attente}` : ''} · toucher pour réessayer (${synchro.erreur})`
     classe = 'synchro-erreur'
   } else if (n) texte = `${attente} · toucher pour envoyer`
   else {
