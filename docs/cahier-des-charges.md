@@ -50,6 +50,7 @@ L'annotation de cotes sur photo est le cœur de l'appli : elle doit être la plu
 ### 2. Photo annotée (priorité n°1)
 
 - Prendre une photo ou en importer une depuis la galerie
+- Importer un plan PDF de l'architecte : chaque page se cote comme une photo
 - Tracer une cote : deux points touchés au doigt, une ligne avec flèches, puis saisie de la valeur au pavé numérique
 - Unité par défaut en millimètres
 - Loupe au moment du placement du point pour viser précisément
@@ -162,6 +163,5 @@ Chaque objet porte un identifiant généré sur le téléphone et une date de mo
 
 - Quels types d'ouvrages relève-t-on le plus souvent, et faut-il des modèles de fiche par type ?
 - Les cotes doivent-elles gérer les niveaux dès la V1 ?
-- Faut-il pouvoir annoter un plan PDF existant en plus des photos ?
 - Quel format de PDF le bureau d'études préfère-t-il (A4 portrait, une photo par page) ?
 - Nom de l'appli et prix de l'abonnement

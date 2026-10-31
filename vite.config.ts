@@ -12,6 +12,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
+      // pdf.js et ses ressources sont gardés sur le téléphone : un plan s'importe aussi sans réseau.
+      workbox: {
+        globPatterns: ['**/*.{js,mjs,css,html,wasm,pfb,ttf}'],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+      },
       manifest: {
         name: 'Relevé de cotes',
         short_name: 'Cotes',

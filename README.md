@@ -18,6 +18,9 @@ Spécifications complètes : `docs/cahier-des-charges.md`.
 La photo est réduite à 2 560 px de grand côté à l'import et n'est jamais modifiée ensuite :
 les cotes sont un calque séparé, en coordonnées de l'image.
 
+Plan de l'architecte : « Importer un plan PDF » transforme chaque page en image (4 096 px de grand côté, photo marquée `plan`),
+cotée avec les mêmes outils qu'une photo et exportée avec elles. Fonctionne sans réseau : `scripts/pdfjs-ressources.mjs` copie les ressources de pdf.js dans `public/pdfjs/`.
+
 ## Étape 3 : croquis et notes
 
 Sur la fiche ouvrage, sous les photos :

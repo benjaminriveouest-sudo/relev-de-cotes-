@@ -6,6 +6,8 @@ export interface ImagePdf {
   octets: Uint8Array
   format: 'jpg' | 'png'
   legende: string
+  /** Page d'un plan PDF importé, plutôt qu'une photo. */
+  plan?: boolean
 }
 
 /** Tout ce qu'il faut pour la fiche d'un ouvrage. */
@@ -271,7 +273,7 @@ async function ajouterFiche(m: Mise, f: FichePdf, infos: InfosExport) {
     )
   }
 
-  for (const [i, photo] of f.photos.entries()) await m.pageImage(photo, `${titre} · Photo ${i + 1}/${f.photos.length}`)
+  for (const [i, photo] of f.photos.entries()) await m.pageImage(photo, `${titre} · ${photo.plan ? 'Plan' : 'Photo'} ${i + 1}/${f.photos.length}`)
   for (const [i, croquis] of f.croquis.entries()) await m.pageImage(croquis, `${titre} · Croquis ${i + 1}/${f.croquis.length}`)
 }
 

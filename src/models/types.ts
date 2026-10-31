@@ -48,6 +48,8 @@ export interface Photo {
   thumb: Blob
   width: number
   height: number
+  /** Page d'un plan PDF importé, plutôt qu'une photo. */
+  plan?: boolean
   createdAt: number
   updatedAt: number
 }

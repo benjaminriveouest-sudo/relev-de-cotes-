@@ -3,9 +3,9 @@ import type { Photo } from '../../models/types'
 
 /** Grand côté maximal à l'import : très lisible, et quelques centaines de Ko au lieu de plusieurs Mo. */
 export const COTE_MAX = 2560
-const COTE_MINIATURE = 320
+export const COTE_MINIATURE = 320
 
-async function redimensionner(source: ImageBitmap, coteMax: number, qualite: number) {
+export async function redimensionner(source: ImageBitmap | HTMLCanvasElement, coteMax: number, qualite: number) {
   const ratio = Math.min(1, coteMax / Math.max(source.width, source.height))
   const width = Math.round(source.width * ratio)
   const height = Math.round(source.height * ratio)

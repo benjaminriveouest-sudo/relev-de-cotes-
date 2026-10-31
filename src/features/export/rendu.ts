@@ -6,6 +6,8 @@ import type { ImagePdf } from './pdf'
 
 /** Côté le plus long d'une image dans le PDF : net à l'impression, fichier raisonnable. */
 const TAILLE_MAX = 1600
+/** Un plan garde plus de pixels : ses petits textes doivent rester lisibles une fois imprimés. */
+const TAILLE_MAX_PLAN = 3200
 const QUALITE_JPEG = 0.85
 
 /**
@@ -181,12 +183,12 @@ function legendeCotes(ann: Annotations): string {
 export async function rendrePhoto(photo: Photo, ann: Annotations): Promise<ImagePdf> {
   const { img, liberer } = await chargerImage(photo.blob)
   try {
-    const s = Math.min(1, TAILLE_MAX / Math.max(photo.width, photo.height))
+    const s = Math.min(1, (photo.plan ? TAILLE_MAX_PLAN : TAILLE_MAX) / Math.max(photo.width, photo.height))
     const { canvas, ctx } = nouveauCanvas(photo.width * s, photo.height * s)
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
     dessinerCalque(ctx, ann, (p) => ({ x: p.x * s, y: p.y * s }), facteur(canvas.width, canvas.height))
-    const legende = `${legendeCotes(ann)} · prise le ${new Date(photo.createdAt).toLocaleDateString('fr-FR')}`
-    return { octets: await versJpeg(canvas), format: 'jpg', legende }
+    const legende = `${legendeCotes(ann)} · ${photo.plan ? 'importé' : 'prise'} le ${new Date(photo.createdAt).toLocaleDateString('fr-FR')}`
+    return { octets: await versJpeg(canvas), format: 'jpg', legende, plan: photo.plan }
   } finally {
     liberer()
   }

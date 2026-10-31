@@ -63,6 +63,8 @@ body { overscroll-behavior: none; }
 .actions-principales { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; padding: 16px 12px; }
 .actions-principales .btn { min-height: 72px; font-size: 1.1rem; }
 
+.actions-principales .import-plan { grid-column: 1 / -1; min-height: 56px; font-size: 1rem; }
+
 .actions-une { grid-template-columns: 1fr; }
 
 .info { padding: 0 16px; color: #ccc; }
