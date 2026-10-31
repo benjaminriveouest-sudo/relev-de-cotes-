@@ -85,6 +85,28 @@ export function arcAngle(sommet: Point, a: Point, b: Point, rayon: number, ecart
   return { points, texte }
 }
 
+/** Rectangle droit, repéré par son centre. */
+export interface Boite {
+  x: number
+  y: number
+  l: number
+  h: number
+}
+
+/** Rectangle droit qui contient une étiquette de taille l × h tournée de `degres`. */
+export function boiteTournee(centre: Point, l: number, h: number, degres: number): Boite {
+  const r = (degres * Math.PI) / 180
+  const [c, s] = [Math.abs(Math.cos(r)), Math.abs(Math.sin(r))]
+  return { ...centre, l: l * c + h * s, h: l * s + h * c }
+}
+
+const seChevauchent = (a: Boite, b: Boite) => Math.abs(a.x - b.x) < (a.l + b.l) / 2 && Math.abs(a.y - b.y) < (a.h + b.h) / 2
+
+/** Première position libre parmi `candidats`, ou la première d'entre elles si tout est pris. */
+export function placerEtiquette(candidats: Boite[], occupees: Boite[]): Boite {
+  return candidats.find((c) => !occupees.some((o) => seChevauchent(c, o))) ?? candidats[0]
+}
+
 /** Distance d'un point à une suite de segments (points à plat x1, y1, x2, y2…). */
 export function distanceToPolyline(p: Point, points: number[]): number {
   if (points.length < 2) return Infinity

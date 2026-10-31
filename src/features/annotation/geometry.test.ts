@@ -3,6 +3,8 @@ import {
   aimanter,
   angleLisible,
   arcAngle,
+  boiteTournee,
+  placerEtiquette,
   clampToImage,
   distanceToPolyline,
   distanceToSegment,
@@ -80,6 +82,24 @@ describe('croquis', () => {
     expect(aimanter({ x: 52, y: 49 }, [{ x: 58, y: 47 }], 50, 10)).toEqual({ x: 58, y: 47 })
     expect(aimanter({ x: 52, y: 49 }, [], 50, 10)).toEqual({ x: 50, y: 50 })
     expect(aimanter({ x: 75, y: 75 }, [], 50, 10)).toEqual({ x: 75, y: 75 })
+  })
+})
+
+describe('placerEtiquette', () => {
+  const boite = (x: number, y: number) => ({ x, y, l: 20, h: 10 })
+
+  it('prend la première position libre', () => {
+    expect(placerEtiquette([boite(0, 0), boite(0, 30)], [boite(5, 5)])).toEqual(boite(0, 30))
+  })
+
+  it('garde la première position si tout est pris', () => {
+    expect(placerEtiquette([boite(0, 0), boite(1, 1)], [boite(0, 0)])).toEqual(boite(0, 0))
+  })
+
+  it('agrandit la place prise par une étiquette tournée', () => {
+    const b = boiteTournee({ x: 0, y: 0 }, 20, 10, 90)
+    expect(b.l).toBeCloseTo(10)
+    expect(b.h).toBeCloseTo(20)
   })
 })
 

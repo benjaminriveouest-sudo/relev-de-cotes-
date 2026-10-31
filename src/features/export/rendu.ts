@@ -1,5 +1,5 @@
 import type { Annotations, Croquis, Photo, Point } from '../../models/types'
-import { angleLisible, arcAngle, distance, milieu } from '../annotation/geometry'
+import { angleLisible, arcAngle, boiteTournee, distance, placerEtiquette, type Boite } from '../annotation/geometry'
 import { COULEUR, COULEUR_MANQUANTE, ECART_TEXTE_ARC, RAYON_ARC, texteAngle, texteCote } from '../annotation/shapes'
 import { dessinerFeuille } from '../croquis/feuille'
 import type { ImagePdf } from './pdf'
@@ -15,6 +15,8 @@ const QUALITE_JPEG = 0.85
  * (en pixels écran) sont multipliées pour rester lisibles une fois l'image posée sur une page A4.
  */
 const facteur = (largeur: number, hauteur: number) => Math.max(largeur, hauteur) / 1000
+/** Sur un plan, les cotes sont plus discrètes : environ 7 points sur une page A4, comme les cotes de l'architecte. */
+const facteurPlan = (largeur: number, hauteur: number) => Math.max(largeur, hauteur) / 2300
 
 async function chargerImage(blob: Blob): Promise<{ img: HTMLImageElement; liberer: () => void }> {
   const url = URL.createObjectURL(blob)
@@ -91,33 +93,89 @@ function polyligne(ctx: CanvasRenderingContext2D, points: number[], epaisseur: n
   ctx.stroke()
 }
 
-/** Texte d'une cote sur son fond noir ; `rotation` en degrés, 0 pour un texte droit, gardé dans l'image. */
-function etiquette(ctx: CanvasRenderingContext2D, texte: string, centre: Point, rotation: number, manquante: boolean, k: number) {
+/** Apparence des cotes dans le PDF : sur une photo, comme à l'écran ; sur un plan, fine et sans halo, comme un plan coté. */
+interface Style {
+  trait: string
+  halo: string | null
+  epaisseur: number
+  fond: string
+  bord: string | null
+  texte: string
+  manquante: string
+}
+
+const STYLE_PHOTO: Style = { trait: COULEUR, halo: '#000', epaisseur: 3, fond: '#000', bord: null, texte: COULEUR, manquante: COULEUR_MANQUANTE }
+const STYLE_PLAN: Style = { trait: '#0B57D0', halo: null, epaisseur: 2, fond: '#fff', bord: '#0B57D0', texte: '#0B57D0', manquante: '#D32F2F' }
+
+/** Étiquette prévue : ses places possibles, de la meilleure à la moins bonne. */
+interface Etiquette {
+  texte: string
+  places: (l: number, h: number) => Point[]
+  rotation: number
+  manquante: boolean
+}
+
+/** Places le long d'une cote : au milieu, puis plus loin ; à côté du trait si le texte ne tient pas dessus. */
+function placesCote(a: Point, b: Point, k: number) {
+  return (l: number, h: number) => {
+    const d = distance(a, b)
+    const n = d > 0 ? { x: -(b.y - a.y) / d, y: (b.x - a.x) / d } : { x: 0, y: -1 }
+    const ecarts = d < l + 30 * k ? [1.4, -1.4, 0] : [0, 1.4, -1.4]
+    return ecarts.flatMap((e) =>
+      [0.5, 0.35, 0.65, 0.2, 0.8].map((t) => ({
+        x: a.x + (b.x - a.x) * t + n.x * e * h,
+        y: a.y + (b.y - a.y) * t + n.y * e * h,
+      })),
+    )
+  }
+}
+
+/** Places autour d'un arc : à sa place, puis en s'éloignant du sommet. */
+function placesAngle(sommet: Point, texte: Point) {
+  return (_l: number, h: number) => {
+    const d = distance(sommet, texte) || 1
+    const u = { x: (texte.x - sommet.x) / d, y: (texte.y - sommet.y) / d }
+    return [0, 1, 2, 3, 4].map((i) => ({ x: texte.x + u.x * i * 1.4 * h, y: texte.y + u.y * i * 1.4 * h }))
+  }
+}
+
+/** Dessine l'étiquette à la première place libre, sans sortir de l'image, et note la place prise. */
+function poserEtiquette(ctx: CanvasRenderingContext2D, e: Etiquette, occupees: Boite[], k: number, style: Style) {
   const taille = 20 * k
   const marge = 4 * k
   ctx.font = `bold ${taille}px sans-serif`
-  const l = ctx.measureText(texte).width + 2 * marge
+  const l = ctx.measureText(e.texte).width + 2 * marge
   const h = taille + 2 * marge
   const { width, height } = ctx.canvas
-  const place =
-    rotation === 0
-      ? { x: Math.max(l / 2, Math.min(width - l / 2, centre.x)), y: Math.max(h / 2, Math.min(height - h / 2, centre.y)) }
-      : centre
+  const candidats = e.places(l, h).map((p) => {
+    const b = boiteTournee(p, l, h, e.rotation)
+    return { ...b, x: Math.max(b.l / 2, Math.min(width - b.l / 2, b.x)), y: Math.max(b.h / 2, Math.min(height - b.h / 2, b.y)) }
+  })
+  const place = placerEtiquette(candidats, occupees)
+  occupees.push(place)
+
   ctx.save()
   ctx.translate(place.x, place.y)
-  ctx.rotate((rotation * Math.PI) / 180)
-  ctx.fillStyle = '#000'
+  ctx.rotate((e.rotation * Math.PI) / 180)
+  ctx.fillStyle = style.fond
   rectangleArrondi(ctx, -l / 2, -h / 2, l, h, 4 * k)
   ctx.fill()
-  ctx.fillStyle = manquante ? COULEUR_MANQUANTE : COULEUR
+  if (style.bord) {
+    ctx.strokeStyle = e.manquante ? style.manquante : style.bord
+    ctx.lineWidth = k
+    ctx.stroke()
+  }
+  ctx.fillStyle = e.manquante ? style.manquante : style.texte
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText(texte, 0, 0)
+  ctx.fillText(e.texte, 0, 0)
   ctx.restore()
 }
 
 /** Dessine cotes et repères ; `vers` passe des coordonnées du support à celles du canvas. */
-function dessinerCalque(ctx: CanvasRenderingContext2D, ann: Annotations, vers: (p: Point) => Point, k: number) {
+function dessinerCalque(ctx: CanvasRenderingContext2D, ann: Annotations, vers: (p: Point) => Point, k: number, style = STYLE_PHOTO) {
+  // Tous les traits d'abord : aucun ne passe ensuite sur le texte d'une autre cote.
+  const etiquettes: Etiquette[] = []
   for (const c of ann.cotes) {
     const a = vers(c.a)
     const b = vers(c.b)
@@ -126,19 +184,21 @@ function dessinerCalque(ctx: CanvasRenderingContext2D, ann: Annotations, vers: (
       const s = vers(c.sommet)
       const branches = [a.x, a.y, s.x, s.y, b.x, b.y]
       const arc = arcAngle(s, a, b, RAYON_ARC * k, ECART_TEXTE_ARC * k, c.valeurMm)
-      polyligne(ctx, branches, 7 * k, '#000')
-      polyligne(ctx, arc.points, 7 * k, '#000')
-      polyligne(ctx, branches, 3 * k, COULEUR)
-      polyligne(ctx, arc.points, 3 * k, COULEUR)
-      etiquette(ctx, texteAngle(c.valeurMm, c.libelle), arc.texte, 0, manquante, k)
+      if (style.halo) {
+        polyligne(ctx, branches, 7 * k, style.halo)
+        polyligne(ctx, arc.points, 7 * k, style.halo)
+      }
+      polyligne(ctx, branches, style.epaisseur * k, style.trait)
+      polyligne(ctx, arc.points, style.epaisseur * k, style.trait)
+      etiquettes.push({ texte: texteAngle(c.valeurMm, c.libelle), places: placesAngle(s, arc.texte), rotation: 0, manquante })
     } else {
-      fleche(ctx, a, b, 7 * k, 16 * k, 16 * k, '#000')
-      fleche(ctx, a, b, 3 * k, 13 * k, 11 * k, COULEUR)
-      etiquette(ctx, texteCote(c.valeurMm, c.libelle), milieu(a, b), angleLisible(a, b), manquante, k)
+      if (style.halo) fleche(ctx, a, b, 7 * k, 16 * k, 16 * k, style.halo)
+      fleche(ctx, a, b, style.epaisseur * k, 13 * k, 11 * k, style.trait)
+      etiquettes.push({ texte: texteCote(c.valeurMm, c.libelle), places: placesCote(a, b, k), rotation: angleLisible(a, b), manquante })
     }
   }
 
-  for (const r of ann.reperes) {
+  const reperes = ann.reperes.map((r) => {
     const p = vers(r.position)
     const taille = 18 * k
     const marge = 6 * k
@@ -146,8 +206,15 @@ function dessinerCalque(ctx: CanvasRenderingContext2D, ann: Annotations, vers: (
     ctx.font = `bold ${taille}px sans-serif`
     const l = ctx.measureText(r.texte).width + 2 * marge
     const h = taille + 2 * marge
-    const haut = p.y - pointe.h - h
+    return { texte: r.texte, p, taille, pointe, l, h, haut: p.y - pointe.h - h }
+  })
+
+  const occupees: Boite[] = reperes.map((r) => ({ x: r.p.x, y: r.haut + r.h / 2, l: r.l, h: r.h }))
+  for (const e of etiquettes) poserEtiquette(ctx, e, occupees, k, style)
+
+  for (const { texte, p, taille, pointe, l, h, haut } of reperes) {
     // Étiquette blanche dont la pointe touche le point visé.
+    ctx.font = `bold ${taille}px sans-serif`
     ctx.beginPath()
     ctx.moveTo(p.x - l / 2, haut)
     ctx.lineTo(p.x + l / 2, haut)
@@ -166,7 +233,7 @@ function dessinerCalque(ctx: CanvasRenderingContext2D, ann: Annotations, vers: (
     ctx.fillStyle = '#000'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(r.texte, p.x, haut + h / 2)
+    ctx.fillText(texte, p.x, haut + h / 2)
   }
 }
 
@@ -186,7 +253,9 @@ export async function rendrePhoto(photo: Photo, ann: Annotations): Promise<Image
     const s = Math.min(1, (photo.plan ? TAILLE_MAX_PLAN : TAILLE_MAX) / Math.max(photo.width, photo.height))
     const { canvas, ctx } = nouveauCanvas(photo.width * s, photo.height * s)
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-    dessinerCalque(ctx, ann, (p) => ({ x: p.x * s, y: p.y * s }), facteur(canvas.width, canvas.height))
+    const vers = (p: Point) => ({ x: p.x * s, y: p.y * s })
+    if (photo.plan) dessinerCalque(ctx, ann, vers, facteurPlan(canvas.width, canvas.height), STYLE_PLAN)
+    else dessinerCalque(ctx, ann, vers, facteur(canvas.width, canvas.height))
     const legende = `${legendeCotes(ann)} · ${photo.plan ? 'importé' : 'prise'} le ${new Date(photo.createdAt).toLocaleDateString('fr-FR')}`
     return { octets: await versJpeg(canvas), format: 'jpg', legende, plan: photo.plan }
   } finally {
