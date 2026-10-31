@@ -62,6 +62,29 @@ export function angleLisible(a: Point, b: Point): number {
   return deg
 }
 
+/**
+ * Arc d'une cote d'angle et place de son texte. L'arc suit le petit côté, ou le grand si
+ * l'angle saisi dépasse 180° ; il reste plus court que les branches.
+ */
+export function arcAngle(sommet: Point, a: Point, b: Point, rayon: number, ecartTexte: number, valeur: number | null) {
+  const r = Math.min(rayon, 0.7 * distance(sommet, a), 0.7 * distance(sommet, b))
+  const debut = Math.atan2(a.y - sommet.y, a.x - sommet.x)
+  let balayage = Math.atan2(b.y - sommet.y, b.x - sommet.x) - debut
+  // Ramené entre -180° et 180° : le petit côté.
+  balayage = Math.atan2(Math.sin(balayage), Math.cos(balayage))
+  if (valeur !== null && valeur > 180) balayage -= Math.sign(balayage || 1) * 2 * Math.PI
+
+  const pas = Math.max(2, Math.ceil(Math.abs(balayage) / (Math.PI / 24)))
+  const points: number[] = []
+  for (let i = 0; i <= pas; i++) {
+    const t = debut + (balayage * i) / pas
+    points.push(sommet.x + r * Math.cos(t), sommet.y + r * Math.sin(t))
+  }
+  const centre = debut + balayage / 2
+  const texte = { x: sommet.x + (r + ecartTexte) * Math.cos(centre), y: sommet.y + (r + ecartTexte) * Math.sin(centre) }
+  return { points, texte }
+}
+
 /** Distance d'un point à une suite de segments (points à plat x1, y1, x2, y2…). */
 export function distanceToPolyline(p: Point, points: number[]): number {
   if (points.length < 2) return Infinity

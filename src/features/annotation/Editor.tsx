@@ -23,9 +23,9 @@ import { commit, createHistory, redo, undo, type History } from './history'
 import { Loupe } from './Loupe'
 import { PaveNumerique } from './PaveNumerique'
 import { RepereDialog } from './RepereDialog'
-import { CoteShape, LigneProvisoire, PointProvisoire, Poignee, RepereShape, texteCote } from './shapes'
+import { AngleShape, CoteShape, LigneProvisoire, PointProvisoire, Poignee, RepereShape, texteAngle, texteCote } from './shapes'
 
-type Mode = 'selection' | 'cote' | 'repere' | 'libre' | 'droite'
+type Mode = 'selection' | 'cote' | 'angle' | 'repere' | 'libre' | 'droite'
 type Selection = { type: 'cote' | 'repere' | 'trait'; id: string } | null
 
 type Geste =
@@ -33,7 +33,7 @@ type Geste =
   | { type: 'placer' }
   | { type: 'libre' }
   | { type: 'droite'; a: Point }
-  | { type: 'poignee'; coteId: string; bout: 'a' | 'b'; bouge: boolean }
+  | { type: 'poignee'; coteId: string; bout: 'a' | 'b' | 'sommet'; bouge: boolean }
   | { type: 'repere'; repereId: string; bouge: boolean }
   | { type: 'pan'; depart: Point; vueDepart: View; bouge: boolean; touche: Selection }
   | { type: 'pincer'; ids: [number, number]; depart: [Point, Point]; vueDepart: View }
@@ -148,6 +148,7 @@ export function EditeurCalque({
   const [view, setView] = useState<View>()
   const [vise, setVise] = useState<Point | null>(null) // doigt à l'écran, pour la loupe
   const [pointA, setPointA] = useState<Point | null>(null) // premier point de la cote en cours
+  const [sommet, setSommet] = useState<Point | null>(null) // sommet de l'angle en cours
   const [brouillon, setBrouillon] = useState<Annotations | null>(null) // pendant un glisser
   const [dialogue, setDialogue] = useState<Dialogue>(null)
   const [erreur, setErreur] = useState<string>()
@@ -201,8 +202,13 @@ export function EditeurCalque({
 
   function changerMode(m: Mode) {
     setMode(m)
-    setPointA(null)
+    annulerPoints()
     setSelection(null)
+  }
+
+  function annulerPoints() {
+    setPointA(null)
+    setSommet(null)
   }
 
   function positionLocale(e: React.PointerEvent): Point {
@@ -220,7 +226,7 @@ export function EditeurCalque({
     if (!feuille) return pt
     const cibles = [
       ...boutsDesTraits(ann.traits),
-      ...ann.cotes.filter((c) => c.id !== sauf).flatMap((c) => [c.a, c.b]),
+      ...ann.cotes.filter((c) => c.id !== sauf).flatMap((c) => (c.sommet ? [c.a, c.b, c.sommet] : [c.a, c.b])),
     ]
     return aimanter(pt, cibles, feuille.pas, RAYON_AIMANT / v.scale)
   }
@@ -234,7 +240,9 @@ export function EditeurCalque({
     let meilleure: Selection = null
     let dMin = RAYON_TOUCHER
     for (const c of ann.cotes) {
-      const d = distanceToSegment(p, toScreen(c.a, v), toScreen(c.b, v))
+      const d = c.sommet
+        ? Math.min(distanceToSegment(p, toScreen(c.sommet, v), toScreen(c.a, v)), distanceToSegment(p, toScreen(c.sommet, v), toScreen(c.b, v)))
+        : distanceToSegment(p, toScreen(c.a, v), toScreen(c.b, v))
       if (d < dMin) {
         dMin = d
         meilleure = { type: 'cote', id: c.id }
@@ -270,7 +278,7 @@ export function EditeurCalque({
     }
     if (pointeurs.current.size > 2) return
 
-    if (mode === 'cote' || mode === 'repere') {
+    if (mode === 'cote' || mode === 'angle' || mode === 'repere') {
       geste.current = { type: 'placer' }
       setVise(p)
       return
@@ -292,8 +300,9 @@ export function EditeurCalque({
     if (selection?.type === 'cote') {
       const c = ann.cotes.find((x) => x.id === selection.id)
       if (c) {
-        for (const bout of ['a', 'b'] as const) {
-          if (distance(p, toScreen(c[bout], view)) < RAYON_TOUCHER) {
+        for (const bout of ['a', 'b', 'sommet'] as const) {
+          const point = c[bout]
+          if (point && distance(p, toScreen(point, view)) < RAYON_TOUCHER) {
             geste.current = { type: 'poignee', coteId: c.id, bout, bouge: false }
             setVise(p)
             return
@@ -392,14 +401,19 @@ export function EditeurCalque({
         break
       }
       case 'placer': {
-        const pt = mode === 'cote' ? viser(p, view) : versImage(p, view)
+        const pt = mode === 'repere' ? versImage(p, view) : viser(p, view)
         if (mode === 'repere') {
           setDialogue({ type: 'repere', position: pt, repereId: null, texte: '' })
+        } else if (mode === 'angle' && !sommet) {
+          setSommet(pt)
+        } else if (mode === 'angle' && sommet && distance(toScreen(sommet, view), p) <= SEUIL_MOUVEMENT) {
+          // Trop près du sommet : ce ne serait pas une branche.
         } else if (!pointA) {
           setPointA(pt)
         } else if (distance(toScreen(pointA, view), p) > SEUIL_MOUVEMENT) {
           const cote: Cote = { id: newId(), photoId: supportId, a: pointA, b: pt, valeurMm: null, libelle: '', updatedAt: Date.now() }
-          setPointA(null)
+          if (sommet) cote.sommet = sommet
+          annulerPoints()
           setDialogue({ type: 'valeur', cote, nouvelle: true })
         }
         break
@@ -445,12 +459,20 @@ export function EditeurCalque({
     onRetour()
   }
 
+  // D'où part le trait en cours : le premier point d'une cote, le sommet d'un angle.
+  const departTrait = mode === 'angle' ? sommet : mode === 'cote' ? pointA : null
   const nbSansValeur = ann.cotes.filter((c) => c.valeurMm === null).length
   const consigne =
     mode === 'cote'
       ? pointA
         ? 'Touchez le second point'
         : 'Touchez le premier point de la cote'
+      : mode === 'angle'
+        ? !sommet
+          ? "Touchez le sommet de l'angle"
+          : !pointA
+            ? 'Touchez un point sur la première branche'
+            : 'Touchez un point sur la seconde branche'
       : mode === 'repere'
         ? "Touchez l'endroit du repère"
         : mode === 'libre'
@@ -510,18 +532,42 @@ export function EditeurCalque({
               )}
             </Layer>
             <Layer listening={false}>
-              {ann.cotes.map((c) => (
-                <CoteShape
-                  key={c.id}
-                  a={toScreen(c.a, view)}
-                  b={toScreen(c.b, view)}
-                  texte={texteCote(c.valeurMm, c.libelle)}
-                  manquante={c.valeurMm === null}
-                  selectionnee={c.id === coteSelectionnee?.id}
-                />
-              ))}
-              {dialogue?.type === 'valeur' && dialogue.nouvelle && (
+              {ann.cotes.map((c) =>
+                c.sommet ? (
+                  <AngleShape
+                    key={c.id}
+                    sommet={toScreen(c.sommet, view)}
+                    a={toScreen(c.a, view)}
+                    b={toScreen(c.b, view)}
+                    valeur={c.valeurMm}
+                    texte={texteAngle(c.valeurMm, c.libelle)}
+                    manquante={c.valeurMm === null}
+                    selectionnee={c.id === coteSelectionnee?.id}
+                  />
+                ) : (
+                  <CoteShape
+                    key={c.id}
+                    a={toScreen(c.a, view)}
+                    b={toScreen(c.b, view)}
+                    texte={texteCote(c.valeurMm, c.libelle)}
+                    manquante={c.valeurMm === null}
+                    selectionnee={c.id === coteSelectionnee?.id}
+                  />
+                ),
+              )}
+              {dialogue?.type === 'valeur' && dialogue.nouvelle && !dialogue.cote.sommet && (
                 <CoteShape a={toScreen(dialogue.cote.a, view)} b={toScreen(dialogue.cote.b, view)} texte="… mm" manquante selectionnee />
+              )}
+              {dialogue?.type === 'valeur' && dialogue.nouvelle && dialogue.cote.sommet && (
+                <AngleShape
+                  sommet={toScreen(dialogue.cote.sommet, view)}
+                  a={toScreen(dialogue.cote.a, view)}
+                  b={toScreen(dialogue.cote.b, view)}
+                  valeur={null}
+                  texte="… °"
+                  manquante
+                  selectionnee
+                />
               )}
               {ann.reperes.map((r) => (
                 <RepereShape key={r.id} p={toScreen(r.position, view)} texte={r.texte} selectionne={r.id === repereSelectionne?.id} />
@@ -530,9 +576,12 @@ export function EditeurCalque({
                 <>
                   <Poignee p={toScreen(coteSelectionnee.a, view)} />
                   <Poignee p={toScreen(coteSelectionnee.b, view)} />
+                  {coteSelectionnee.sommet && <Poignee p={toScreen(coteSelectionnee.sommet, view)} />}
                 </>
               )}
-              {pointA && vise && <LigneProvisoire a={toScreen(pointA, view)} b={toScreen(viser(vise, view), view)} />}
+              {sommet && pointA && <LigneProvisoire a={toScreen(sommet, view)} b={toScreen(pointA, view)} />}
+              {departTrait && vise && <LigneProvisoire a={toScreen(departTrait, view)} b={toScreen(viser(vise, view), view)} />}
+              {sommet && <PointProvisoire p={toScreen(sommet, view)} />}
               {pointA && <PointProvisoire p={toScreen(pointA, view)} />}
               {mode === 'droite' && trace && (
                 <>
@@ -548,14 +597,14 @@ export function EditeurCalque({
             dessinerFond={dessinerFond}
             view={view}
             cible={vise}
-            depart={mode === 'cote' ? pointA : null}
+            depart={departTrait}
             largeurCadre={taille.w}
           />
         )}
         <div className="consigne">{erreur ?? consigne}</div>
       </div>
 
-      <footer className={`outils ${feuille ? 'outils-croquis' : ''}`}>
+      <footer className="outils">
         {selection ? (
           <div className="outils-ligne">
             {coteSelectionnee && (
@@ -595,6 +644,9 @@ export function EditeurCalque({
             <button className={`btn ${mode === 'cote' ? 'actif' : ''}`} onClick={() => changerMode('cote')}>
               ↔ Cote
             </button>
+            <button className={`btn ${mode === 'angle' ? 'actif' : ''}`} onClick={() => changerMode('angle')}>
+              ∠ Angle
+            </button>
             <button className={`btn ${mode === 'repere' ? 'actif' : ''}`} onClick={() => changerMode('repere')}>
               T Repère
             </button>
@@ -604,8 +656,8 @@ export function EditeurCalque({
           </div>
         )}
         <div className="outils-ligne">
-          {pointA ? (
-            <button className="btn" onClick={() => setPointA(null)}>
+          {pointA || sommet ? (
+            <button className="btn" onClick={annulerPoints}>
               Annuler le point
             </button>
           ) : (
@@ -625,6 +677,7 @@ export function EditeurCalque({
         <PaveNumerique
           valeurInitiale={dialogue.cote.valeurMm}
           libelleInitial={dialogue.cote.libelle}
+          angle={!!dialogue.cote.sommet}
           onAnnuler={() => setDialogue(null)}
           onValider={(valeurMm, libelle) => {
             const cote = { ...dialogue.cote, valeurMm, libelle, updatedAt: Date.now() }

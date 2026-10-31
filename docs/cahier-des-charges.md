@@ -53,6 +53,7 @@ L'annotation de cotes sur photo est le cœur de l'appli : elle doit être la plu
 - Tracer une cote : deux points touchés au doigt, une ligne avec flèches, puis saisie de la valeur au pavé numérique
 - Unité par défaut en millimètres
 - Loupe au moment du placement du point pour viser précisément
+- Coter un angle : sommet, un point sur chaque branche, puis saisie de la valeur en degrés
 - Déplacer, modifier ou supprimer une cote ; annuler / rétablir
 - Ajouter des repères texte (« axe poteau », « nu fini »)
 - Plusieurs photos par ouvrage
@@ -160,7 +161,7 @@ Chaque objet porte un identifiant généré sur le téléphone et une date de mo
 ## Questions ouvertes
 
 - Quels types d'ouvrages relève-t-on le plus souvent, et faut-il des modèles de fiche par type ?
-- Les cotes doivent-elles gérer les niveaux et les angles dès la V1 ?
+- Les cotes doivent-elles gérer les niveaux dès la V1 ?
 - Faut-il pouvoir annoter un plan PDF existant en plus des photos ?
 - Quel format de PDF le bureau d'études préfère-t-il (A4 portrait, une photo par page) ?
 - Nom de l'appli et prix de l'abonnement

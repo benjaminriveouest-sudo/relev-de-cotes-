@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   aimanter,
   angleLisible,
+  arcAngle,
   clampToImage,
   distanceToPolyline,
   distanceToSegment,
@@ -79,5 +80,31 @@ describe('croquis', () => {
     expect(aimanter({ x: 52, y: 49 }, [{ x: 58, y: 47 }], 50, 10)).toEqual({ x: 58, y: 47 })
     expect(aimanter({ x: 52, y: 49 }, [], 50, 10)).toEqual({ x: 50, y: 50 })
     expect(aimanter({ x: 75, y: 75 }, [], 50, 10)).toEqual({ x: 75, y: 75 })
+  })
+})
+
+describe('arcAngle', () => {
+  const sommet = { x: 0, y: 0 }
+  const a = { x: 100, y: 0 }
+  const b = { x: 0, y: 100 }
+
+  it('suit le petit côté et place le texte sur la bissectrice', () => {
+    const { points, texte } = arcAngle(sommet, a, b, 50, 10, 90)
+    expect(points.slice(0, 2)).toEqual([50, 0])
+    expect(points[points.length - 2]).toBeCloseTo(0)
+    expect(points[points.length - 1]).toBeCloseTo(50)
+    expect(texte.x).toBeCloseTo(60 * Math.SQRT1_2)
+    expect(texte.y).toBeCloseTo(60 * Math.SQRT1_2)
+  })
+
+  it('passe par le grand côté au-delà de 180°', () => {
+    const { texte } = arcAngle(sommet, a, b, 50, 10, 270)
+    expect(texte.x).toBeCloseTo(-60 * Math.SQRT1_2)
+    expect(texte.y).toBeCloseTo(-60 * Math.SQRT1_2)
+  })
+
+  it('reste plus court que les branches', () => {
+    const { points } = arcAngle(sommet, { x: 10, y: 0 }, b, 50, 10, null)
+    expect(points[0]).toBeCloseTo(7)
   })
 })

@@ -126,10 +126,20 @@ body { overscroll-behavior: none; }
   pointer-events: none;
 }
 
-.outils { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--bord); }
-.outils-ligne { display: flex; gap: 8px; }
-.outils-ligne:first-child { flex: 1; }
-.outils-ligne:first-child .btn { flex: 1; min-width: 0; padding: 0 4px; font-size: 0.95rem; }
+/* Toujours deux rangées : si la barre changeait de hauteur, l'image serait recadrée et le zoom perdu. */
+.outils {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 129px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--bord);
+}
+.outils-ligne { display: contents; }
+.outils .btn { flex: 1 1 22%; min-width: 0; padding: 0 4px; font-size: 0.85rem; }
+.outils .btn-icone { font-size: 1.4rem; }
 
 /* Fenêtres de saisie. */
 .modale-fond {
@@ -264,11 +274,6 @@ body { overscroll-behavior: none; }
 .formulaire .modale-actions { margin-top: 6px; }
 .btn-large { width: 100%; }
 
-/* Croquis : deux rangées d'outils (tracé, puis annuler / rétablir). */
-.outils-croquis { flex-wrap: wrap; }
-.outils-croquis .outils-ligne:first-child { flex-basis: 100%; }
-.outils-croquis .outils-ligne:first-child .btn { font-size: 0.85rem; }
-.outils-croquis .outils-ligne:last-child { flex: 1; justify-content: flex-end; }
 .apercu-croquis { display: block; width: 100%; aspect-ratio: 4 / 3; background: #fff; }
 
 /* Notes. */

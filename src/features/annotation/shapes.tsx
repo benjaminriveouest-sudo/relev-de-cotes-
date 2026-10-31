@@ -1,11 +1,14 @@
 import { Arrow, Circle, Group, Label, Line, Tag, Text } from 'react-konva'
 import type { Point } from '../../models/types'
-import { angleLisible, milieu } from './geometry'
+import { angleLisible, arcAngle, milieu } from './geometry'
 
 export const COULEUR = '#FFD400'
 export const COULEUR_SELECTION = '#00E5FF'
 export const COULEUR_MANQUANTE = '#FF5A36'
 const TAILLE_TEXTE = 20
+/** Rayon de l'arc d'un angle et écart de son texte, pour une taille de texte de 20. */
+export const RAYON_ARC = 56
+export const ECART_TEXTE_ARC = 30
 
 let ctxMesure: CanvasRenderingContext2D | null = null
 function largeurTexte(texte: string): number {
@@ -18,6 +21,11 @@ function largeurTexte(texte: string): number {
 export function texteCote(valeurMm: number | null, libelle: string): string {
   const valeur = valeurMm === null ? '? mm' : `${valeurMm} mm`
   return libelle ? `${libelle} ${valeur}` : valeur
+}
+
+export function texteAngle(valeur: number | null, libelle: string): string {
+  const texte = valeur === null ? '?°' : `${String(valeur).replace('.', ',')}°`
+  return libelle ? `${libelle} ${texte}` : texte
 }
 
 interface CoteProps {
@@ -41,6 +49,33 @@ export function CoteShape({ a, b, texte, manquante, selectionnee }: CoteProps) {
       <Arrow points={points} pointerAtBeginning pointerLength={16} pointerWidth={16} stroke="#000" fill="#000" strokeWidth={7} />
       <Arrow points={points} pointerAtBeginning pointerLength={13} pointerWidth={11} stroke={couleur} fill={couleur} strokeWidth={3} />
       <Label x={m.x} y={m.y} rotation={angleLisible(a, b)} offsetX={w / 2} offsetY={h / 2}>
+        <Tag fill="#000" cornerRadius={4} stroke={couleur} strokeWidth={selectionnee ? 2 : 0} />
+        <Text text={texte} fontSize={TAILLE_TEXTE} fontStyle="bold" fill={manquante ? COULEUR_MANQUANTE : couleur} padding={padding} />
+      </Label>
+    </Group>
+  )
+}
+
+interface AngleProps extends CoteProps {
+  sommet: Point
+  valeur: number | null
+}
+
+/** Cote d'angle en coordonnées écran : deux branches depuis le sommet et un arc. */
+export function AngleShape({ sommet, a, b, valeur, texte, manquante, selectionnee }: AngleProps) {
+  const couleur = selectionnee ? COULEUR_SELECTION : COULEUR
+  const arc = arcAngle(sommet, a, b, RAYON_ARC, ECART_TEXTE_ARC, valeur)
+  const padding = 4
+  const w = largeurTexte(texte) + 2 * padding
+  const h = TAILLE_TEXTE + 2 * padding
+  const branches = [a.x, a.y, sommet.x, sommet.y, b.x, b.y]
+  return (
+    <Group listening={false}>
+      <Line points={branches} stroke="#000" strokeWidth={7} lineJoin="round" />
+      <Line points={arc.points} stroke="#000" strokeWidth={7} />
+      <Line points={branches} stroke={couleur} strokeWidth={3} lineJoin="round" />
+      <Line points={arc.points} stroke={couleur} strokeWidth={3} />
+      <Label x={arc.texte.x} y={arc.texte.y} offsetX={w / 2} offsetY={h / 2}>
         <Tag fill="#000" cornerRadius={4} stroke={couleur} strokeWidth={selectionnee ? 2 : 0} />
         <Text text={texte} fontSize={TAILLE_TEXTE} fontStyle="bold" fill={manquante ? COULEUR_MANQUANTE : couleur} padding={padding} />
       </Label>

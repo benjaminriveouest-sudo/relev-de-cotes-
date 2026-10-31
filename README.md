@@ -10,6 +10,7 @@ Spécifications complètes : `docs/cahier-des-charges.md`.
 - Saisir la valeur en mm au pavé numérique, avec un libellé rapide (Longueur, Hauteur, Entraxe…)
 - « Plus tard » laisse la cote sans valeur, signalée en rouge
 - Modifier : toucher une cote, glisser ses extrémités, changer la valeur, supprimer
+- Tracer un angle : toucher le sommet, puis un point sur chaque branche, et saisir la valeur en degrés (la perspective d'une photo fausse les angles : la valeur n'est pas calculée)
 - Repères texte (« Axe poteau », « Nu fini »…)
 - Annuler / rétablir, zoom et déplacement à deux doigts
 - Sauvegarde automatique sur le téléphone (IndexedDB) à chaque modification

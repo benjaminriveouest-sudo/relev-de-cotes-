@@ -58,7 +58,9 @@ export interface Cote {
   photoId: string
   a: Point
   b: Point
-  /** Valeur saisie en millimètres, null si pas encore saisie. */
+  /** Présent sur une cote d'angle : a et b sont alors les bouts des deux branches. */
+  sommet?: Point
+  /** Valeur saisie en millimètres (en degrés sur une cote d'angle), null si pas encore saisie. */
   valeurMm: number | null
   libelle: string
   updatedAt: number

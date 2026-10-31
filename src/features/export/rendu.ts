@@ -1,6 +1,6 @@
 import type { Annotations, Croquis, Photo, Point } from '../../models/types'
-import { angleLisible, distance, milieu } from '../annotation/geometry'
-import { COULEUR, COULEUR_MANQUANTE, texteCote } from '../annotation/shapes'
+import { angleLisible, arcAngle, distance, milieu } from '../annotation/geometry'
+import { COULEUR, COULEUR_MANQUANTE, ECART_TEXTE_ARC, RAYON_ARC, texteAngle, texteCote } from '../annotation/shapes'
 import { dessinerFeuille } from '../croquis/feuille'
 import type { ImagePdf } from './pdf'
 
@@ -78,32 +78,62 @@ function fleche(ctx: CanvasRenderingContext2D, a: Point, b: Point, epaisseur: nu
   }
 }
 
+/** Ligne brisée (points à plat x1, y1, x2, y2…). */
+function polyligne(ctx: CanvasRenderingContext2D, points: number[], epaisseur: number, couleur: string) {
+  ctx.strokeStyle = couleur
+  ctx.lineWidth = epaisseur
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'butt'
+  ctx.beginPath()
+  for (let i = 0; i + 1 < points.length; i += 2) ctx.lineTo(points[i], points[i + 1])
+  ctx.stroke()
+}
+
+/** Texte d'une cote sur son fond noir ; `rotation` en degrés, 0 pour un texte droit, gardé dans l'image. */
+function etiquette(ctx: CanvasRenderingContext2D, texte: string, centre: Point, rotation: number, manquante: boolean, k: number) {
+  const taille = 20 * k
+  const marge = 4 * k
+  ctx.font = `bold ${taille}px sans-serif`
+  const l = ctx.measureText(texte).width + 2 * marge
+  const h = taille + 2 * marge
+  const { width, height } = ctx.canvas
+  const place =
+    rotation === 0
+      ? { x: Math.max(l / 2, Math.min(width - l / 2, centre.x)), y: Math.max(h / 2, Math.min(height - h / 2, centre.y)) }
+      : centre
+  ctx.save()
+  ctx.translate(place.x, place.y)
+  ctx.rotate((rotation * Math.PI) / 180)
+  ctx.fillStyle = '#000'
+  rectangleArrondi(ctx, -l / 2, -h / 2, l, h, 4 * k)
+  ctx.fill()
+  ctx.fillStyle = manquante ? COULEUR_MANQUANTE : COULEUR
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(texte, 0, 0)
+  ctx.restore()
+}
+
 /** Dessine cotes et repères ; `vers` passe des coordonnées du support à celles du canvas. */
 function dessinerCalque(ctx: CanvasRenderingContext2D, ann: Annotations, vers: (p: Point) => Point, k: number) {
   for (const c of ann.cotes) {
     const a = vers(c.a)
     const b = vers(c.b)
-    fleche(ctx, a, b, 7 * k, 16 * k, 16 * k, '#000')
-    fleche(ctx, a, b, 3 * k, 13 * k, 11 * k, COULEUR)
-
-    const texte = texteCote(c.valeurMm, c.libelle)
-    const taille = 20 * k
-    const marge = 4 * k
-    ctx.font = `bold ${taille}px sans-serif`
-    const l = ctx.measureText(texte).width + 2 * marge
-    const h = taille + 2 * marge
-    const m = milieu(a, b)
-    ctx.save()
-    ctx.translate(m.x, m.y)
-    ctx.rotate((angleLisible(a, b) * Math.PI) / 180)
-    ctx.fillStyle = '#000'
-    rectangleArrondi(ctx, -l / 2, -h / 2, l, h, 4 * k)
-    ctx.fill()
-    ctx.fillStyle = c.valeurMm === null ? COULEUR_MANQUANTE : COULEUR
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(texte, 0, 0)
-    ctx.restore()
+    const manquante = c.valeurMm === null
+    if (c.sommet) {
+      const s = vers(c.sommet)
+      const branches = [a.x, a.y, s.x, s.y, b.x, b.y]
+      const arc = arcAngle(s, a, b, RAYON_ARC * k, ECART_TEXTE_ARC * k, c.valeurMm)
+      polyligne(ctx, branches, 7 * k, '#000')
+      polyligne(ctx, arc.points, 7 * k, '#000')
+      polyligne(ctx, branches, 3 * k, COULEUR)
+      polyligne(ctx, arc.points, 3 * k, COULEUR)
+      etiquette(ctx, texteAngle(c.valeurMm, c.libelle), arc.texte, 0, manquante, k)
+    } else {
+      fleche(ctx, a, b, 7 * k, 16 * k, 16 * k, '#000')
+      fleche(ctx, a, b, 3 * k, 13 * k, 11 * k, COULEUR)
+      etiquette(ctx, texteCote(c.valeurMm, c.libelle), milieu(a, b), angleLisible(a, b), manquante, k)
+    }
   }
 
   for (const r of ann.reperes) {
@@ -174,6 +204,10 @@ export async function rendreCroquis(croquis: Croquis, ann: Annotations): Promise
   for (const c of ann.cotes) {
     xs.push(c.a.x, c.b.x)
     ys.push(c.a.y, c.b.y)
+    if (c.sommet) {
+      xs.push(c.sommet.x)
+      ys.push(c.sommet.y)
+    }
   }
   for (const r of ann.reperes) {
     xs.push(r.position.x)
