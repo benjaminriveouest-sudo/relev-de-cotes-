@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import Dexie from 'dexie'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { Annotations, Chantier, Ouvrage, Photo, StatutOuvrage } from '../models/types'
+import type { Annotations, Chantier, Ouvrage, Photo, Piece, StatutOuvrage } from '../models/types'
 import {
   addCroquis,
   addPhoto,
@@ -10,6 +10,7 @@ import {
   deleteCroquis,
   deleteOuvrage,
   deletePhoto,
+  deletePiece,
   getChantier,
   getNote,
   listChantiers,
@@ -17,6 +18,7 @@ import {
   listNotesVocales,
   listOuvrages,
   listPhotos,
+  listPieces,
   loadAnnotations,
   NOM_BASE,
   nouveauCroquis,
@@ -25,6 +27,7 @@ import {
   saveNote,
   saveNoteVocale,
   saveOuvrage,
+  savePiece,
 } from './db'
 
 function photo(id: string, createdAt: number, ouvrageId = 'o1'): Photo {
@@ -303,5 +306,52 @@ describe('mise à jour depuis l’étape 1', () => {
 
     await db.open()
     expect(await db.chantiers.count()).toBe(0)
+  })
+})
+
+function pieceRelevee(id: string, chantierId: string, createdAt = 1): Piece {
+  return { id, chantierId, nom: id, largeurMm: 3600, profondeurMm: 3000, hauteurMm: 2500, remarque: '', createdAt, updatedAt: createdAt }
+}
+
+describe('pièces relevées', () => {
+  beforeEach(async () => {
+    await db.delete()
+    await db.open()
+  })
+
+  it("liste les pièces d'un chantier dans l'ordre de saisie", async () => {
+    await saveChantier(chantier('c1'))
+    await saveChantier(chantier('c2'))
+    await savePiece(pieceRelevee('reserve', 'c1', 2))
+    await savePiece(pieceRelevee('boutique', 'c1', 1))
+    await savePiece(pieceRelevee('ailleurs', 'c2', 1))
+    expect((await listPieces('c1')).map((p) => p.id)).toEqual(['boutique', 'reserve'])
+  })
+
+  it('remonte le chantier quand une pièce est enregistrée', async () => {
+    await db.chantiers.put(chantier('c1'))
+    await savePiece(pieceRelevee('boutique', 'c1'))
+    expect((await getChantier('c1'))?.updatedAt).toBeGreaterThan(1)
+  })
+
+  it('supprime une pièce seule, et toutes les pièces avec leur chantier', async () => {
+    await saveChantier(chantier('c1'))
+    await saveChantier(chantier('c2'))
+    await savePiece(pieceRelevee('a', 'c1'))
+    await savePiece(pieceRelevee('b', 'c1'))
+    await savePiece(pieceRelevee('c', 'c2'))
+    await deletePiece('a')
+    expect((await listPieces('c1')).map((p) => p.id)).toEqual(['b'])
+    await deleteChantier('c1')
+    expect(await listPieces('c1')).toEqual([])
+    expect((await listPieces('c2')).map((p) => p.id)).toEqual(['c'])
+  })
+
+  it("note chaque écriture d'une pièce dans la file d'envoi au serveur", async () => {
+    await saveChantier(chantier('c1'))
+    await savePiece(pieceRelevee('boutique', 'c1'))
+    expect((await db.envois.get('pieces:boutique'))?.op).toBe('put')
+    await deletePiece('boutique')
+    expect((await db.envois.get('pieces:boutique'))?.op).toBe('delete')
   })
 })

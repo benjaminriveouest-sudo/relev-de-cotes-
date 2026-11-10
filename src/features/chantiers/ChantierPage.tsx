@@ -7,6 +7,7 @@ import { ExportPdf } from '../export/ExportPdf'
 import { exporterChantier } from '../export/exporter'
 import { OuvrageForm } from '../ouvrages/OuvrageForm'
 import { Statut } from '../ouvrages/Statut'
+import { PiecesChantier } from '../pieces/PiecesChantier'
 import { ChantierForm } from './ChantierForm'
 
 interface Props {
@@ -94,6 +95,8 @@ export function ChantierPage({ chantierId, onRetour, onOpenOuvrage }: Props) {
           </li>
         ))}
       </ul>
+
+      <PiecesChantier chantier={chantier} />
 
       {modale === 'chantier' && (
         <ChantierForm

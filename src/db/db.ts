@@ -10,6 +10,7 @@ import type {
   NoteVocale,
   Ouvrage,
   Photo,
+  Piece,
   Repere,
   StatutOuvrage,
   Trait,
@@ -27,6 +28,7 @@ class RelevesDB extends Dexie {
   traits!: Table<Trait, string>
   notes!: Table<Note, string>
   notesVocales!: Table<NoteVocale, string>
+  pieces!: Table<Piece, string>
   envois!: Table<Envoi, string>
   meta!: Table<{ cle: string; valeur: unknown }, string>
 
@@ -84,6 +86,10 @@ class RelevesDB extends Dexie {
       [TABLE_ENVOIS]: 'cle',
       meta: 'cle',
     })
+    // Fiche Pièce (pont vers Fusion by DRZ) : nouvelle table seulement.
+    this.version(5).stores({
+      pieces: 'id, chantierId',
+    })
     this.use(suiviModifications())
   }
 }
@@ -129,13 +135,33 @@ export async function saveChantier(chantier: Chantier): Promise<void> {
 /** Tables du contenu d'un ouvrage, à verrouiller pour le supprimer. */
 const tablesOuvrage = () => [db.ouvrages, db.photos, db.cotes, db.reperes, db.croquis, db.traits, db.notes, db.notesVocales]
 
-/** Supprime le chantier avec tous ses ouvrages, photos et cotes. */
+/** Supprime le chantier avec tous ses ouvrages, photos, cotes et pièces relevées. */
 export async function deleteChantier(id: string): Promise<void> {
-  await db.transaction('rw', [db.chantiers, ...tablesOuvrage()], async () => {
+  await db.transaction('rw', [db.chantiers, db.pieces, ...tablesOuvrage()], async () => {
     const ouvrages = await db.ouvrages.where('chantierId').equals(id).primaryKeys()
     for (const o of ouvrages) await supprimerOuvrage(o)
+    await db.pieces.where('chantierId').equals(id).delete()
     await db.chantiers.delete(id)
   })
+}
+
+// --- Pièces relevées ---
+
+export function listPieces(chantierId: string): Promise<Piece[]> {
+  return db.pieces.where('chantierId').equals(chantierId).sortBy('createdAt')
+}
+
+/** Enregistre la pièce et remonte le chantier en tête de liste. */
+export async function savePiece(piece: Piece): Promise<void> {
+  const now = Date.now()
+  await db.transaction('rw', db.pieces, db.chantiers, async () => {
+    await db.pieces.put({ ...piece, updatedAt: now })
+    await db.chantiers.update(piece.chantierId, { updatedAt: now })
+  })
+}
+
+export async function deletePiece(id: string): Promise<void> {
+  await db.pieces.delete(id)
 }
 
 // --- Ouvrages ---
