@@ -27,6 +27,24 @@ export interface Chantier {
   updatedAt: number
 }
 
+/**
+ * Pièce relevée sur place (boutique, cuisine, réserve…) : ses trois cotes partent telles quelles dans
+ * Fusion by DRZ, qui crée la pièce de l'agencement sans ressaisie.
+ */
+export interface Piece {
+  id: string
+  chantierId: string
+  nom: string
+  /** Cotes en millimètres, null tant qu'elles ne sont pas relevées. */
+  largeurMm: number | null
+  profondeurMm: number | null
+  /** Hauteur sous plafond. */
+  hauteurMm: number | null
+  remarque: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface Ouvrage {
   id: string
   chantierId: string

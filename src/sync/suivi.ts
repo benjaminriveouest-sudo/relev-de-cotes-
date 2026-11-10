@@ -11,6 +11,7 @@ export const TABLES_SYNCHRO = [
   'traits',
   'notes',
   'notesVocales',
+  'pieces',
 ] as const
 
 export type TableSynchro = (typeof TABLES_SYNCHRO)[number]
