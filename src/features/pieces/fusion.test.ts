@@ -63,7 +63,7 @@ describe('contenuFusion', () => {
       new Date('2026-11-10T12:00:00Z'),
     )
     expect(contenu.format).toBe(FORMAT_FUSION)
-    expect(contenu.version).toBe(1)
+    expect(contenu.version).toBe(2)
     expect(contenu.exporte_le).toBe('2026-11-10T12:00:00.000Z')
     expect(contenu.chantier).toEqual({ nom: 'Boutique : rue / centre', client: 'Client', adresse: '1 rue du Test' })
     expect(contenu.pieces).toEqual([

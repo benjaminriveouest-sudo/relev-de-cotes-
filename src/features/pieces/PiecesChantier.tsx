@@ -65,6 +65,7 @@ export function PiecesChantier({ chantier }: { chantier: Chantier }) {
               <button className="carte" onClick={() => setModale(piece)}>
                 <span className="carte-titre">{piece.nom}</span>
                 <span className="carte-detail">
+                  {piece.forme === 'murs' && `${piece.murs?.length ?? 0} murs · hors tout `}
                   {mm(piece.largeurMm)} × {mm(piece.profondeurMm)} × {mm(piece.hauteurMm)} mm
                 </span>
                 {piece.remarque && <span className="carte-detail">{piece.remarque}</span>}

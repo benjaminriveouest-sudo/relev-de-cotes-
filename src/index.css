@@ -318,3 +318,17 @@ body { overscroll-behavior: none; }
 .membre-nom { flex: 1; min-width: 140px; }
 .membre-nom small { display: block; color: #aaa; font-weight: 400; overflow-wrap: anywhere; }
 .statut-verrou { padding: 0 12px; margin: -4px 0 0; font-size: 0.85rem; color: #aaa; }
+
+/* Fiche Pièce, saisie mur par mur. */
+.murs { display: flex; flex-direction: column; gap: 10px; }
+.mur { padding: 10px; border: 2px solid var(--bord); border-radius: 10px; background: #111; }
+.mur-titre { display: flex; align-items: center; justify-content: space-between; font-weight: 700; }
+.mur-titre .btn { min-height: 40px; padding: 0 12px; }
+.mur-champs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+.mur-champs .large { grid-column: 1 / -1; }
+.mur-note { margin: 6px 0 0; font-size: 0.85rem; color: #bbb; }
+.croquis-piece { display: block; flex: none; width: 100%; aspect-ratio: 4 / 3; border: 2px solid var(--bord); border-radius: 10px; background: #0b0b0b; }
+.croquis-piece .mur-trait { stroke: var(--accent); stroke-width: 3; fill: rgba(255, 212, 0, 0.08); stroke-linejoin: round; }
+.croquis-piece .ecart { stroke: var(--danger); stroke-width: 3; stroke-dasharray: 8 6; }
+.croquis-piece text { fill: var(--texte); font-size: 15px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
+.fermeture-ok { color: var(--valide); }

@@ -31,11 +31,28 @@ export interface Chantier {
  * Pièce relevée sur place (boutique, cuisine, réserve…) : ses trois cotes partent telles quelles dans
  * Fusion by DRZ, qui crée la pièce de l'agencement sans ressaisie.
  */
+/** Un mur d'une pièce saisie en faisant le tour, toujours dans le même sens. */
+export interface MurPiece {
+  /** Longueur en millimètres, null tant qu'elle n'est pas relevée. */
+  longueurMm: number | null
+  /** Angle intérieur (degrés) du coin entre ce mur et le suivant : 90 pour un coin droit, 135 pour un pan coupé. */
+  angleDeg: number
+  /** Diagonale relevée du début de ce mur au bout du mur suivant : quand elle est saisie, c'est elle qui donne l'angle. */
+  diagonaleMm?: number | null
+}
+
 export interface Piece {
   id: string
   chantierId: string
   nom: string
-  /** Cotes en millimètres, null tant qu'elles ne sont pas relevées. */
+  /** « rectangle » (absent sur les anciennes pièces) : trois cotes ; « murs » : le tour de la pièce, mur par mur. */
+  forme?: 'rectangle' | 'murs'
+  /** Tour de la pièce quand forme vaut « murs ». */
+  murs?: MurPiece[]
+  /**
+   * Cotes en millimètres, null tant qu'elles ne sont pas relevées. Pour une pièce mur par mur : rectangle qui la
+   * contient, recalculé à chaque enregistrement.
+   */
   largeurMm: number | null
   profondeurMm: number | null
   /** Hauteur sous plafond. */

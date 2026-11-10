@@ -1,8 +1,9 @@
 import type { Chantier, Piece } from '../../models/types'
+import { contourMurs, controlerMurs } from './forme'
 
 /** Identifiant du fichier d'échange lu par Fusion by DRZ (Travaux › Relevé › Importer une pièce relevée). */
 export const FORMAT_FUSION = 'releve-de-cotes/pieces'
-export const VERSION_FUSION = 1
+export const VERSION_FUSION = 2
 
 /**
  * Limites d'une pièce dans Fusion by DRZ (agencement.py, ENV_PIECE) : une pièce « prête » ici est une pièce que
@@ -16,10 +17,13 @@ export const LIMITES_MM = {
 
 export interface PieceFusion {
   nom: string
+  /** Pour une pièce mur par mur : rectangle qui la contient. */
   largeur_mm: number
   profondeur_mm: number
   hauteur_mm: number
   remarque: string
+  /** Coins de la pièce dans l'ordre du tour (mm), seulement pour une pièce mur par mur : Fusion en fait ses murs. */
+  contour_mm?: [number, number][]
 }
 
 export interface FichierFusion {
@@ -39,13 +43,20 @@ export function lireCote(texte: string): number | null {
 }
 
 /** Ce qui manque ou paraît faux dans une pièce, en clair ; vide si elle peut partir dans Fusion. */
-export function controlerPiece(piece: Pick<Piece, 'largeurMm' | 'profondeurMm' | 'hauteurMm'>): string[] {
+export function controlerPiece(
+  piece: Pick<Piece, 'largeurMm' | 'profondeurMm' | 'hauteurMm' | 'forme' | 'murs'>,
+): string[] {
   const soucis: string[] = []
-  const cotes: [string, number | null, { mini: number; maxi: number }][] = [
-    ['largeur', piece.largeurMm, LIMITES_MM.largeur],
-    ['profondeur', piece.profondeurMm, LIMITES_MM.profondeur],
-    ['hauteur sous plafond', piece.hauteurMm, LIMITES_MM.hauteur],
-  ]
+  const parMurs = piece.forme === 'murs'
+  // Mur par mur : c'est le tour de la pièce qui compte, pas son encombrement.
+  if (parMurs) soucis.push(...controlerMurs(piece.murs ?? []))
+  const cotes: [string, number | null, { mini: number; maxi: number }][] = parMurs
+    ? [['hauteur sous plafond', piece.hauteurMm, LIMITES_MM.hauteur]]
+    : [
+        ['largeur', piece.largeurMm, LIMITES_MM.largeur],
+        ['profondeur', piece.profondeurMm, LIMITES_MM.profondeur],
+        ['hauteur sous plafond', piece.hauteurMm, LIMITES_MM.hauteur],
+      ]
   for (const [nom, v, { mini, maxi }] of cotes) {
     if (v == null) soucis.push(`${nom} manquante`)
     else if (v < mini) soucis.push(`${nom} de ${v} mm, sous les ${mini} mm : saisie en cm ou en m ?`)
@@ -63,13 +74,19 @@ export function contenuFusion(chantier: Chantier, pieces: Piece[], maintenant = 
     version: VERSION_FUSION,
     exporte_le: maintenant.toISOString(),
     chantier: { nom: chantier.nom, client: chantier.client, adresse: chantier.adresse },
-    pieces: pieces.filter(pieceComplete).map((p) => ({
-      nom: p.nom.trim() || 'Pièce',
-      largeur_mm: p.largeurMm as number,
-      profondeur_mm: p.profondeurMm as number,
-      hauteur_mm: p.hauteurMm as number,
-      remarque: p.remarque.trim(),
-    })),
+    pieces: pieces.filter(pieceComplete).map((p) => {
+      const contour = p.forme === 'murs' ? contourMurs(p.murs ?? []) : null
+      return {
+        nom: p.nom.trim() || 'Pièce',
+        largeur_mm: p.largeurMm as number,
+        profondeur_mm: p.profondeurMm as number,
+        hauteur_mm: p.hauteurMm as number,
+        remarque: p.remarque.trim(),
+        ...(contour
+          ? { contour_mm: contour.points.map((q) => [Math.round(q.x * 10) / 10, Math.round(q.y * 10) / 10] as [number, number]) }
+          : {}),
+      }
+    }),
   }
 }
 
